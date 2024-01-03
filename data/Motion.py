@@ -223,35 +223,6 @@ class Motion():
         return self.cnt == len(self.postures) - 1
 
 
-    def getNextLeftContactPosture(self):
-        n = self.cnt
-        # when not contact
-        while n < len(self.postures) - 1:
-            if not self.postures[n].lfootContact:
-                break
-            n += 1
-        while n < len(self.postures) - 1:
-            if self.postures[n].lfootContact:
-                break
-            n += 1
-
-        return self.postures[n], n - self.cnt
-
-    def getNextRightContactPosture(self):
-        n = self.cnt
-        # when not contact
-        while n < len(self.postures) - 1:
-            if not self.postures[n].rfootContact:
-                break
-            n += 1
-        while n < len(self.postures) - 1:
-            if self.postures[n].rfootContact:
-                break
-            n += 1
-
-        return self.postures[n], n - self.cnt
-
-
     '''
     def smoothTrajectoryAndDirections(self, n, name):
 

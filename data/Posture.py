@@ -178,7 +178,7 @@ class Posture():
 
 
 
-    def forwardKinematics(self, root, footOnly=False):
+    def forwardKinematics(self, root):
 
 #        stack = [(root, np.identity(4))]
 
@@ -192,8 +192,6 @@ class Posture():
             node, M = stack.pop()
 
             if 'End' in node.name:
-                continue
-            if footOnly and node.name == "LowerBack":
                 continue
 
             T = np.identity(4)
@@ -234,7 +232,7 @@ class Posture():
             return vector / l2norm(vector)
 
         def limb(root, targetName, targetPoint):
-            nodePositions = dict(self.forwardKinematics(root, footOnly=True))
+            nodePositions = dict(self.forwardKinematics(root))
             names = list(nodePositions.keys())
 
             traj = indexTrajToTargetNode(root, targetName)

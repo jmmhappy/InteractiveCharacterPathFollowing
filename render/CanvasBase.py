@@ -2,13 +2,12 @@ import random
 import sys
 import time
 
-import wx
-import wx.adv
+import wx, wx.adv
 import wx.glcanvas as glcanvas
 
 try:
     from OpenGL.GL import *
-    from OpenGL.GLUT import *
+#    from OpenGL.GLUT import *
     haveOpenGL = True
 except ImportError:
     haveOpenGL = False
@@ -17,7 +16,6 @@ except ImportError:
 from render.MousePicker import MousePicker
 from render.drawPrimitives import *
 from render.MotionRenderer import MotionRenderer
-from render.ObstacleRenderer import ObstacleRenderer
 
 import numpy as np
 from itertools import combinations
@@ -33,19 +31,24 @@ class CanvasBase(glcanvas.GLCanvas):
 
         #self.SetMinSize((800,800))
         self.SetMinSize((1800,1800))
-        #self.SetMinSize((3300,2000))
+        # self.SetMinSize((3300,2000))
         self.isPlaying = False
         self.options = {
+            'characterDrawing':True,
             'meshDrawing':True, 
             'logDrawing':False, 
             'record':False,
             'limitedUpdate':False,
             'startFromNearest':False,
             'amplifyCurve':False,
+            'extendedSearchParam':{'K':1, 'L':1},
+            'extendedSearch':False,
             'forceQuery':False,
             'scalePoints':False,
             'smoothInput':False,
             'localControl':False,
+
+            'joystick':None,
 
             # render options
             'r_desiredPoint':False,
@@ -58,12 +61,7 @@ class CanvasBase(glcanvas.GLCanvas):
         }
 
         # reinforcement learning
-        self.observation = {
-                'target':None, 
-                "joystick":None,
-                'map':None, 
-                'localframe':np.identity(4)
-        } 
+        self.observation = {'target':None, 'map':None, 'localframe':np.identity(4)} 
 
         # --- Recorders ---
 
@@ -139,15 +137,11 @@ class CanvasBase(glcanvas.GLCanvas):
         self.Bind(wx.EVT_KEY_UP, self.OnKeyUp)
         self.Bind(wx.EVT_IDLE, self.OnIdle)
 
-        self.stick = wx.adv.Joystick(wx.JOYSTICK2)
+        # joystick
+        self.stick = wx.adv.Joystick(wx.JOYSTICK1)
         self.stick.SetCapture(self)
         self.Bind(wx.EVT_JOYSTICK_EVENTS, self.OnJoystick)
-        #self.Bind(wx.EVT_JOY_MOVE, self.OnJoystickMove)
-        # self.Bind(wx.EVT_JOY_ZMOVE, self.OnJoystickMove) # this evt is never caught
         self.stick.SetMovementThreshold(1)
-        print("Joystick minimum ", self.stick.GetXMin(), self.stick.GetXMax())
-        print("Joystick maximum ", self.stick.GetYMin(), self.stick.GetYMax())
-        print("Limits * 0.0001 will be used as the target velocity(root)")
 
         # instant tangent at current position, of 2dim input trajectory
         self.instant = np.array([0,0,1])
@@ -181,14 +175,13 @@ class CanvasBase(glcanvas.GLCanvas):
             return
 
         if evt.IsMove():
-            position = evt.GetPosition()
-            self.observation["joystick"] = np.array(position) * 0.0001
+            position = np.array(evt.GetPosition())
+            length = np.linalg.norm(position)
+            x,z = position / length
 
-            # print("p",self.stick.GetPosition())
-            # print("U",self.stick.GetUPosition()) # 2nd vertical
-            # print("Rudder",self.stick.GetRudderPosition()) # 2nd horizontal
+            self.options['joystick'] = np.array([x,0,-z])
 
-    
+
     def OnTimer(self, event):
 
         def setTaskFromInput(rendererID):
@@ -197,23 +190,22 @@ class CanvasBase(glcanvas.GLCanvas):
             characterPosition = renderer.getFocusPoint()
 
             if self.observation['target'] is not None:
+                self.renderers[rendererID].goal = self.observation['target']
+                self.observation['target'] = None
                 name = 'position'
-
-            if self.stick.IsOk():
-                name = "joystick"
 
             if sum(self.dkeyflags.values()) > 0:
                 name = 'direction'
 
             if not self.pickers[rendererID].isEmpty():
                 name = 'trajectory'
-                startFromNearest = self.options['startFromNearest']
-                limitedUpdate = self.options['limitedUpdate']
-                inputTrajectory = self.pickers[rendererID].spareOnlyFuture(\
-                    startFromNearest, limitedUpdate, characterPosition, self.options['smoothInput'])
+                inputTrajectory = self.pickers[rendererID].getTrajectory(self.options['smoothInput'])
 
                 if self.options['forceQuery']:
-                    instant = -inputTrajectory[0] + inputTrajectory[1]
+                    index = self.renderers[rendererID].getFutureTrajectoryIndex()
+                    p1, p2 = inputTrajectory[index:index+2]
+
+                    instant = -p1 + p2
                     d = np.sqrt(sum(instant*instant))
                     if d > 0:
                         instant /= d
@@ -222,13 +214,20 @@ class CanvasBase(glcanvas.GLCanvas):
 
             userInput = {
                 'name':name,
-                'position':self.observation['target'],
-                "joystick":self.observation["joystick"],
+                'position':self.renderers[rendererID].goal,
                 'obstacles':self.observation['map'],
                 'direction':self.dkeyflags,
                 'trajectory':inputTrajectory,
-                'amplifyCurve':self.options['amplifyCurve'],
 
+                'amplifyCurve':self.options['amplifyCurve'],
+                'joystick':self.options['joystick'],
+                'startFromNearest':self.options['startFromNearest'],
+                'limitedUpdate' :self.options['limitedUpdate'],
+                'extendedSearch':{
+                    "flag":self.options['extendedSearch'],
+                    "K":self.options['extendedSearchParam']['K'],
+                    "L":self.options['extendedSearchParam']['L'],
+                },
             }
 
             self.taskLabel.SetLabel('Task: ' + name)
@@ -258,15 +257,14 @@ class CanvasBase(glcanvas.GLCanvas):
             else:
                 renderer.update(userInput)
 
-        # #multi character collision
-        # for a,b in combinations(characters,2):
-            # p1 = self.renderers[a].getFocusPoint()
-            # p2 = self.renderers[b].getFocusPoint()
-            # if np.linalg.norm(p1-p2) < 0.5: # two characters collide
-                # self.renderers[a].reset()
-                # self.pickers[a].reset(True)
-                # self.renderers[b].reset()
-                # self.pickers[b].reset(True)
+        for a,b in combinations(characters,2):
+            p1 = self.renderers[a].getFocusPoint()
+            p2 = self.renderers[b].getFocusPoint()
+            if np.linalg.norm(p1-p2) < 0.5: # two characters collide
+                self.renderers[a].reset()
+                self.pickers[a].reset(True)
+                self.renderers[b].reset()
+                self.pickers[b].reset(True)
 
         self.Refresh(False)
 
@@ -296,7 +294,7 @@ class CanvasBase(glcanvas.GLCanvas):
     def addRenderer(self, r, label):
         self.renderers.append(r)
 
-        if isinstance(r, ObstacleRenderer):
+        if not isinstance(r, MotionRenderer): # Obstacle renderer
             self.observation['map'] = r.obstacles
             self.pickers.append(None)
             return
@@ -309,8 +307,7 @@ class CanvasBase(glcanvas.GLCanvas):
 
 
     def markCharacterSelection(self, it):
-        if not (isinstance(self.renderers[it], MotionRenderer)):
-            return
+        assert(isinstance(self.renderers[it], MotionRenderer))
 
         ch, nextCh = self.renderers[self.characterInAction], self.renderers[it]
         if ch != nextCh and ch.COLOR == nextCh.COLOR:
@@ -422,7 +419,7 @@ class CanvasBase(glcanvas.GLCanvas):
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
 
-        if self.observation["joystick"] is not None:
+        if self.options["joystick"] is not None:
             self.drawJoystickInput()
 
         if self.isFocusOn:
@@ -479,6 +476,7 @@ class CanvasBase(glcanvas.GLCanvas):
 
         elif key == wx.WXK_ESCAPE:
             self.pickers[self.characterInAction].reset(clean=True)
+            self.renderers[self.characterInAction].setFutureTrajectoryIndex(0) # reset picker index
         elif key == wx.WXK_SPACE:
             if self.isPlaying:
                 self.stopTimer()
@@ -523,6 +521,12 @@ class CanvasBase(glcanvas.GLCanvas):
     def setOptions(self, key, value):
         if self.options.get(key) is not None:
             self.options[key] = value
+
+    def setExtendedSearch(self, val):
+        K, L = val.values()
+        print("Set extended motion matching parameters in K = %d, L = %d"%(K,L))
+        self.options['extendedSearchParam']['K'] = K
+        self.options['extendedSearchParam']['L'] = L
 
     def setNetwork(self, value):
         for r in self.renderers:
@@ -582,6 +586,7 @@ class CanvasBase(glcanvas.GLCanvas):
         if self.isPicking:
             characterPosition = self.getFocusPoint()
             self.pickers[self.characterInAction].adjust(characterPosition, self.options['localControl'])
+            self.renderers[self.characterInAction].setFutureTrajectoryIndex(0) # reset picker index
             self.pickers[self.characterInAction].scale(characterPosition, self.options['localControl'], self.options["scalePoints"])
             self.renderers[self.characterInAction].emptyStack()
         self.isPanning = self.isRotating = self.isPicking = False
@@ -643,38 +648,31 @@ class CanvasBase(glcanvas.GLCanvas):
         def drawLines(color, points):
             r,g,b = color
             glColor3ub(r,g,b)
+            glLineWidth(1)
             glBegin(GL_LINES)
             for i in range(0, len(points)-1):
                 p1, p2 = points[i:i+2]
-                glVertex3fv(p1)
-                glVertex3fv(p2)
-            glEnd()
-
-        def drawLinesWithColors(colors, points):
-            assert(len(colors) == len(points))
-            glLineWidth(5)
-            glBegin(GL_LINES)
-            for i in range(0, len(points)-1):
-                p1, p2 = points[i:i+2]
-                r, g, b = colors[i]
-                r = 255 - b
-
-                glColor3ub(r,g,b)
                 glVertex3fv(p1)
                 glVertex3fv(p2)
             glEnd()
             glLineWidth(1)
 
+        # def drawLinesWithColors(colors, points):
+            # assert(len(colors) == len(points))
+            # # glLineWidth(5)
+            # glBegin(GL_LINES)
+            # for i in range(0, len(points)-1):
+                # p1, p2 = points[i:i+2]
+                # r, g, b = colors[i]
+                # r = 255 - b
+
+                # glColor3ub(r,g,b)
+                # glVertex3fv(p1)
+                # glVertex3fv(p2)
+            # glEnd()
+            # glLineWidth(1)
+
         for renderer, picker in zip(self.renderers, self.pickers):
-            if not isinstance(renderer, MotionRenderer):
-                continue
-
-            if self.options["r_rootTrajectory"]:
-                r,g,b = renderer.COLOR
-                drawLines((r, g, b), renderer.getRootTrajectoryLog()) # of character
-
-#            for p in renderer.getRootTrajectoryLog():
-#                drawCircle((r,g,b), p[0], p[2], 1)
 
             glLineWidth(5)
             drawLines((255,28,0), picker.getTrajectoryOnMove()) # of mouse
@@ -724,14 +722,15 @@ class CanvasBase(glcanvas.GLCanvas):
         glPushMatrix()
         glColor3ub(0,255,0)
         glScalef(0.02,0.02,0)
-        x, y = self.observation["joystick"]
+        x, _, y = self.options["joystick"] * 4 
 
-        glTranslatef(x,-y,0)
+        glTranslatef(x,y,0)
         drawVerticalCircle()
         glPopMatrix()
 
         glColor3ub(200,200,200)
         glScalef(0.1,0.1,0)
         drawVerticalCircle()
-        
+
         glPopMatrix()
+

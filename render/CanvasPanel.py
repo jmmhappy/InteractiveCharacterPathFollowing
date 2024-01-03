@@ -31,6 +31,9 @@ class CanvasPanel(wx.Panel):
         self.addRenderOptionCheckBoxes(optionBox)
         self.addCharacterBoard(optionBox)
 
+        self.K = self.L = None # text ctrls
+        self.addExtendedSearchParameters(optionBox)
+
         optionBox.AddSpacer(20)
         taskLabel = wx.StaticText(self, label='')
         optionBox.Add(taskLabel, 0, wx.ALIGN_CENTER)
@@ -58,6 +61,8 @@ class CanvasPanel(wx.Panel):
 
         self.canvas.setTaskLabel(taskLabel)
         self.canvas.setSlider(slider)
+        # initialize K, L
+        self.canvas.setExtendedSearch({'K':2, 'L':3})
 
     def getMouseTrajectory(self):
         return self.canvas.getMouseTrajectory()
@@ -70,6 +75,12 @@ class CanvasPanel(wx.Panel):
     def OnRadioBox(self, evt):
         rb = evt.GetEventObject()
         selection = rb.GetStringSelection()
+
+        if selection == 'None':
+            self.canvas.setOptions('characterDrawing', False)
+            return
+        else:
+            self.canvas.setOptions('characterDrawing', True)
 
         # Mesh drawing
         if selection == 'Line':
@@ -112,6 +123,8 @@ class CanvasPanel(wx.Panel):
             self.rewindText.SetLabel(str(rewindIndex))
 #        elif bId == 6: # weights
 #            self.canvas.setFeatureWeights([textctrl.GetValue() for textctrl in self.weights.values()])
+        elif bId == 19: # extended search parameters
+            self.canvas.setExtendedSearch({'K':int(self.K.GetValue()), 'L':int(self.L.GetValue())})
 
         self.canvas.SetFocus()
         self.canvas.Refresh(False)
@@ -136,6 +149,8 @@ class CanvasPanel(wx.Panel):
             self.canvas.setOptions('startFromNearest', obj.GetValue())
         elif identifier == 7:
             self.canvas.setOptions('amplifyCurve', obj.GetValue())
+        elif identifier == 11:
+            self.canvas.setOptions("extendedSearch", obj.GetValue())
         elif identifier == 5:
             self.canvas.setOptions('forceQuery', obj.GetValue())
         elif identifier == 6:
@@ -156,19 +171,19 @@ class CanvasPanel(wx.Panel):
         obj = evt.GetEventObject()
 
         name = None
-        if identifier == 11:
+        if identifier == 12:
             name = "desiredPoint"
-        elif identifier == 12: 
-            name = "nonlimitedQueryPoints"
         elif identifier == 13: 
-            name = "maxLimitPoint"
+            name = "nonlimitedQueryPoints"
         elif identifier == 14: 
-            name = "arrows"
+            name = "maxLimitPoint"
         elif identifier == 15: 
-            name = "queryPoints"
+            name = "arrows"
         elif identifier == 16: 
+            name = "queryPoints"
+        elif identifier == 17: 
             name = "cornerPoint"
-        elif identifier == 17:
+        elif identifier == 18:
             name = "rootTrajectory" 
 
         self.canvas.setOptions('r_'+name, obj.GetValue())
@@ -245,10 +260,10 @@ class CanvasPanel(wx.Panel):
 
 
     def addRenderMethodRadioBoxes(self, optionBox):
-        renderMethodBox = wx.RadioBox(self, wx.ID_ANY, majorDimension=2, \
-            label="Choose a render method:", style=wx.RA_SPECIFY_ROWS, choices=['Line', 'Mesh'])
+        renderMethodBox = wx.RadioBox(self, wx.ID_ANY, majorDimension=3, \
+            label="Choose a render method:", style=wx.RA_SPECIFY_ROWS, choices=['None', 'Line', 'Mesh'])
         renderMethodBox.Bind(wx.EVT_RADIOBOX, self.OnRadioBox)
-        renderMethodBox.SetSelection(1)
+        renderMethodBox.SetSelection(2)
         self.canvas.setOptions('meshDrawing', True)
         optionBox.AddSpacer(20)
         optionBox.Add(renderMethodBox, 0, wx.ALIGN_CENTER)
@@ -290,12 +305,13 @@ class CanvasPanel(wx.Panel):
         buttons.append(("limitedUpdate", wx.CheckBox(self, id=3, label="Compute Desired Position\nof Current Character")))
         buttons.append(("startFromNearest", wx.CheckBox(self, id=4, label="Use Nearest Path Point\nas Desired Position")))
         buttons.append(("amplifyCurve", wx.CheckBox(self, id=7, label="Modify Future Position\nfor Sharp Corners")))
+        buttons.append(("extendedSearch",wx.CheckBox(self, id=11, label="Extended Motion Matching")))
         buttons.append(("forceQuery", wx.CheckBox(self, id=5, label="Force query after a strong curve")))
         buttons.append((None, wx.CheckBox(self, id=6, label="Use DirectionNet")))
         buttons.append(("localControl", wx.CheckBox(self, id=9, label="Local Control Mode")))
 
         for name, b in buttons:
-            if b.GetId() not in [4,6]:
+            if b.GetId() not in [4,6,11]:
                 b.SetValue(True)
                 if name is not None:
                     self.canvas.setOptions(name, True)
@@ -325,13 +341,13 @@ class CanvasPanel(wx.Panel):
         box.AddSpacer(10)
 
         buttons = []
-        buttons.append(wx.CheckBox(self, id=11, label="Desired Position")) 
-        buttons.append(wx.CheckBox(self, id=12, label="User Given Positions"))
-        buttons.append(wx.CheckBox(self, id=13, label="Max Velocity Limited Position")) 
-        buttons.append(wx.CheckBox(self, id=14, label="Query Arrows")) 
-        buttons.append(wx.CheckBox(self, id=15, label="Query Points")) 
-        buttons.append(wx.CheckBox(self, id=16, label="Corner Point")) 
-        buttons.append(wx.CheckBox(self, id=17, label="Root Trajectory Log")) 
+        buttons.append(wx.CheckBox(self, id=12, label="Desired Position")) 
+        buttons.append(wx.CheckBox(self, id=13, label="User Given Positions"))
+        buttons.append(wx.CheckBox(self, id=14, label="Max Velocity Limited Position")) 
+        buttons.append(wx.CheckBox(self, id=15, label="Query Arrows")) 
+        buttons.append(wx.CheckBox(self, id=16, label="Query Points")) 
+        buttons.append(wx.CheckBox(self, id=17, label="Corner Point")) 
+        buttons.append(wx.CheckBox(self, id=18, label="Root Trajectory Log")) 
 
         for i, b in enumerate(buttons):
             if i == 3:
@@ -357,6 +373,26 @@ class CanvasPanel(wx.Panel):
         optionBox.Add(box, 0, wx.ALIGN_CENTER)
 
         self.characterBox = box
+
+    def addExtendedSearchParameters(self, optionBox):
+        box = wx.StaticBoxSizer(wx.VERTICAL, self)
+        
+        self.K = wx.TextCtrl(self, wx.ID_ANY, value="2")
+        self.L = wx.TextCtrl(self, wx.ID_ANY, value="3")
+        
+        box.Add(wx.StaticText(self, wx.ID_ANY, label="K and L for Extende Motion Matching"))
+        box.Add(wx.StaticText(self, wx.ID_ANY, label="Enter K:"))
+        box.Add(self.K)
+        box.Add(wx.StaticText(self, wx.ID_ANY, label="Enter L(1<=L<=3):"))
+        box.Add(self.L)
+        box.AddSpacer(20)
+
+        button = wx.Button(self, 19, "Apply")
+        box.Add(button)
+        self.Bind(wx.EVT_BUTTON, self.OnButton, button)
+
+        optionBox.AddSpacer(20)
+        optionBox.Add(box, 0, wx.ALIGN_CENTER)
 
 
 #    def addFeatureWeightTextCtrl(self, optionBox):

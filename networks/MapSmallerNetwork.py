@@ -20,9 +20,9 @@ class MapTorchNetwork(TorchModelV2, nn.Module):
 
 #        in_size = np.array([32,32]) # map
         def _generate_conv_model():
-            in_channels = 2 # binary map
+            in_channels = 1 # binary map
             conv = []
-            for out_channels, kernel, stride in [[16, [4,4], 2], [16, [3,3], 2]]:
+            for out_channels, kernel, stride in [[16, [4,4], 1], [32, [2,2], 1]]:
 #                padding, out_size = same_padding(in_size, kernel, stride)
                 conv.append(
                     SlimConv2d(
@@ -40,8 +40,8 @@ class MapTorchNetwork(TorchModelV2, nn.Module):
             conv.append(nn.Flatten()) 
             conv.append(
                 SlimFC(
-                    in_size=3*3*16, # 12*12*32
-                    out_size=32,
+                    in_size=4608, # 12*12*32
+                    out_size=128,
                     activation_fn="relu",
                 )
             )
@@ -50,10 +50,10 @@ class MapTorchNetwork(TorchModelV2, nn.Module):
 
         def _generate_linear_model():
             # together with char state and goal (17)
-            prev_layer_size = 32 + obs_space['character'].shape[0]
+            prev_layer_size = 128 + obs_space['character'].shape[0]
 
             linear = []
-            for size in [32]:
+            for size in [64]:
                 linear.append(
                     SlimFC(
                         in_size=prev_layer_size,
@@ -72,14 +72,16 @@ class MapTorchNetwork(TorchModelV2, nn.Module):
 
         # final layer fc to output(12)
         self._final_layer = SlimFC(
-                in_size=32,
+                in_size=64,
                 out_size=num_outputs,
                 activation_fn=None,
                 initializer=normc_initializer(1.0)
         ).float()
 
-#        print(pytorch_model_summary.summary(self.layer1, torch.zeros(32, 2, 16, 16), show_input=False))
-#        print(pytorch_model_summary.summary(self.layer2, torch.zeros(32, 32+17), show_input=False))
+#        print(pytorch_model_summary.summary(self.layer, torch.zeros(32, 1, 16, 16), show_input=True))
+#        print(pytorch_model_summary.summary(self.layer, torch.zeros(32, 1, 16, 16), show_input=False))
+#        print(pytorch_model_summary.summary(self._final_layer, torch.zeros(32, 32+17), show_input=True))
+#        print(pytorch_model_summary.summary(self._final_layer, torch.zeros(32, 32+17), show_input=False))
 
 
         conv, linear = _generate_conv_model(), _generate_linear_model()
@@ -87,7 +89,7 @@ class MapTorchNetwork(TorchModelV2, nn.Module):
         self._value_branch_2 = nn.Sequential(*linear).float()
 
         self._value_branch_final = SlimFC(
-            in_size=32,
+            in_size=64,
             out_size=1,
             initializer=normc_initializer(0.01),
             activation_fn=None,

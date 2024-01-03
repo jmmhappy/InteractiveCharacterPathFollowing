@@ -62,7 +62,7 @@ quadBase = np.array(quadBase, np.float32)
 quadArrowIndices = [0,1,2, 3,5,6, 3,4,5]
 
 #Circle
-radius = 1 
+radius = 0.02
 CIRCLE_SIZE = 20
 unit = 2*np.pi / CIRCLE_SIZE
 circleVertices = [[0,0,0]]
@@ -73,9 +73,9 @@ circleIndices = np.append(np.arange(CIRCLE_SIZE+1), 1)
 
 # Grid
 height = -0.01
-# ca,cb = (255/255, 255/255, 255/255), (210/255, 240/255, 255/255) # blue
+ca,cb = (255/255, 255/255, 255/255), (210/255, 240/255, 255/255) # blue
 #ca,cb = (255/255, 255/255, 255/255), (230/255, 235/255, 200/255) # green
-ca,cb = (255/255, 255/255, 255/255), (242/255, 238/255, 222/255) # orange
+#ca,cb = (255/255, 255/255, 255/255), (242/255, 238/255, 222/255) # orange
 #ca,cb = (255/255, 255/255, 255/255), (242/255, 242/255, 242/255) # red
 #ca,cb = (255/255, 255/255, 255/255), (242/255, 242/255, 255/255) # purple
 #ca,cb = (66/255, 70/255, 66/255), (53/255, 61/255, 62/255)
@@ -104,70 +104,8 @@ def drawMeshGrid():
     glDisableClientState(GL_VERTEX_ARRAY)
     glDisableClientState(GL_COLOR_ARRAY)
 
-# Cylinder
-up = circleVertices.copy()[1:] + [0, .5, 0] # Y up
-down = circleVertices.copy()[1:] + [0, -.5, 0]
-#up = np.vstack((up, up[-1]))
-#down = np.vstack((down, down[-1]))
-sideNormals = []
-sideVertices = []
-for i in range(len(up)):
-    j = (i+1) % len(up)
-
-    p1,p2,p3 = up[i], down[i], down[j]
-    sideVertices.extend([p1,p2,p3])
-    s,r = p2-p1, p3-p1
-    normal = np.cross(s,r)
-    sideNormals.extend([-normal]*3)
-
-    p1,p2,p3 = down[j], up[j], up[i]
-    sideVertices.extend([p1,p2,p3])
-    s,r = p2-p1, p3-p1
-    normal = np.cross(s,r)
-    sideNormals.extend([-normal]*3)
-
-sideVertices = np.array(sideVertices, dtype=np.float32)
-sideNormals = np.array(sideNormals, dtype=np.float32)
-sideIndices = np.array([[6*i+j for j in range(6)] for i in range(len(up))]).flatten()
-
-def drawCylinder(color, centerPoint, radius, height):
-    global sideVertices, sideNormals, sideIndices
-    global circleVertices, circleNormals, circleIndices
-
-    r,g,b = color
-    glColor3ub(r,g,b)
-
-    glRotatef(90, 1,0,0) # dartpy cylinder
-    glScalef(radius, height, radius)
-
-    glPushMatrix()
-    x,y,z = centerPoint
-    glTranslatef(x,y,z)
-
-    glEnableClientState(GL_VERTEX_ARRAY)
-    glEnableClientState(GL_NORMAL_ARRAY)
-
-    glVertexPointer(3, GL_FLOAT, False, sideVertices.tobytes())
-    glNormalPointer(GL_FLOAT, False, sideNormals.tobytes())
-    glDrawElementsui(GL_TRIANGLES, sideIndices)
-
-    glTranslatef(0,.5,0)
-    glVertexPointer(3, GL_FLOAT, False, circleVertices.tobytes())
-    glNormalPointer(GL_FLOAT, False, np.array([0,1,0]*len(circleVertices)).tobytes())
-    glDrawElementsui(GL_TRIANGLE_FAN, circleIndices)
-    glTranslatef(0,-1,0)
-    glVertexPointer(3, GL_FLOAT, False, circleVertices.tobytes())
-    glNormalPointer(GL_FLOAT, False, np.array([0,-1,0]*len(circleVertices)).tobytes())
-    glDrawElementsui(GL_TRIANGLE_FAN, circleIndices)
-
-    glDisableClientState(GL_VERTEX_ARRAY)
-    glDisableClientState(GL_NORMAL_ARRAY)
-
-    glPopMatrix()
-
-
 def drawCube(color, centerPoint, w=0.5, h=0.5, l=0.5):
-    global cubeVertices, cubeNormals, cubeIndices
+    global cubeVertices, cubeIndices
 
     # width, height, position xyz(center)
     r,g,b, = color
@@ -188,7 +126,6 @@ def drawCube(color, centerPoint, w=0.5, h=0.5, l=0.5):
 
     glPopMatrix()
 
-
 def drawCircle(color, x, z, scale=1):
     r,g,b = color
     glColor3ub(r,g,b)
@@ -197,7 +134,6 @@ def drawCircle(color, x, z, scale=1):
     if scale != 1:
         glTranslatef(0,0.001*scale,0)
         glScalef(scale, 0, scale)
-    glScalef(0.02, 0, 0.02) # default size
 
     glEnableClientState(GL_VERTEX_ARRAY)
     glVertexPointer(3, GL_FLOAT, False, circleVertices.tobytes())

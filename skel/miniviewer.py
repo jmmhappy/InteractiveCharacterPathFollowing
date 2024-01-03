@@ -1,7 +1,7 @@
 import dartpy as dart
 
 if __name__== "__main__":
-    world = dart.utils.SkelParser.readWorld("/home/jmm/motionmatching/skel/4legger.skel")
+    world = dart.utils.SkelParser.readWorld("/home/jmm/Projects/motionmatching/skel/4legger.skel")
     world.setGravity([0, -9.81, 0])
 
     node = dart.gui.osg.RealTimeWorldNode(world)

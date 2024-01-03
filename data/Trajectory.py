@@ -6,6 +6,9 @@ from bisect import bisect_left
 import numpy as np
 
 FRAMETIME = 1/30
+SCALE_FACTOR = 1/2
+
+FUTURE_FEATURE_SECONDS = 1 # A second = FRAMETIME*3 = 3 future points
 
 def qt_factory(inputType, FUTURE_TERM):
     # priority exists
@@ -14,12 +17,16 @@ def qt_factory(inputType, FUTURE_TERM):
     elif inputType == "direction":
         return DirectionQueryTrajectory(FUTURE_TERM)
 
-    # return FutureMotionQueryTrajectory(FUTURE_TERM)
-    return FutureContactQueryTrajectory(None)
+    return FutureMotionQueryTrajectory(FUTURE_TERM)
 
 class QueryTrajectory():
     def __init__(self, FUTURE_TERM):
         self.FUTURE_TERM = FUTURE_TERM
+
+    def getFutureFeatureCount(self):
+        nFrames = 1/FRAMETIME
+        futurePointPerSecond = nFrames / self.FUTURE_TERM
+        return int(futurePointPerSecond * FUTURE_FEATURE_SECONDS) # 3, 6, 9, ..
 
     # abstract method
     def calculate(self, obs, actor):
@@ -29,14 +36,17 @@ class QueryTrajectory():
         queryTrajectory = []
         for p in points:
             queryTrajectory.extend([p[0], p[2], p[3], p[5]]) # Y-up
-        assert(len(queryTrajectory)==12)
+        # assert(len(queryTrajectory)==12)
         return np.array(queryTrajectory)
 
     def verboseFormat(self, formatted):
-        assert(len(formatted)==12)
+        # assert(len(formatted)==12)
+
+        nPoints = self.getFutureFeatureCount()
+        assert(len(formatted) == 4*nPoints)
 
         frames = []
-        for i in range(0, 12, 4):
+        for i in range(0, 4*nPoints, 4):
             *position, sin, cos = formatted[i:i+4] # Z forward pi/2-theta
 
             # Y-up
@@ -49,60 +59,38 @@ class QueryTrajectory():
         return frames
 
 
-class FutureContactQueryTrajectory(QueryTrajectory):
-    def __init(self):
-        super().__init__(None)
-        leftContactPose = None
-        rightContactPose = None
+def futurePositionsScaledInTangentialFrame(localFuturePositions):
+    if SCALE_FACTOR == 1:
+        return localFuturePositions # do nothing
 
-    def calculate(self, motion, _actor=None):
-        localFrame = motion.getCurrentPosture().getLocalFrame() # 4x4
+    a,b,c = localFuturePositions
 
-        # left
-        pose, deltaTime = motion.getNextLeftContactPosture()
-        positions = dict(pose.forwardKinematics(motion.getSkeletonRoot(), footOnly=True))
-        frame = np.linalg.inv(localFrame) @ pose.getLocalFrame()
-        footPosition = (frame @ np.append(positions["LeftFoot"], 1))[[0,2]]
-        # footDirection = (frame @ np.append(positions["LeftToeBase"] - positions["LeftFoot"], 1))[[0,2]]
-        footDirection = positions["LeftToeBase"] - positions["LeftFoot"]
-        footDirection = (frame[:3,:3] @ footDirection)[[0,2]]
-        footDirection /= np.linalg.norm(footDirection)
-        
-        ft = np.concatenate(([deltaTime], footPosition, footDirection))
+    # tangential frame
+    l = np.linalg.norm(c)
+    if l < 0.001:
+        l = 1
 
-        # right
-        pose, deltaTime = motion.getNextRightContactPosture()
-        positions = dict(pose.forwardKinematics(motion.getSkeletonRoot(), footOnly=True))
-        frame = np.linalg.inv(localFrame) @ pose.getLocalFrame()
-        footPosition = (frame @ np.append(positions["RightFoot"], 1))[[0,2]]
-        footDirection = positions["RightToeBase"] - positions["RightFoot"]
-        footDirection = (frame[:3,:3] @ footDirection)[[0,2]]
-        footDirection /= np.linalg.norm(footDirection)
-        
-        ft = np.concatenate((ft, [deltaTime], footPosition, footDirection))
+    axis_UP = np.array([0,1,0]) # Y UP
+    axis_T = c/l # z
+    axis_N = np.cross(axis_UP, axis_T) # x
 
-        return ft
+    frame = np.stack((axis_N, axis_UP, axis_T)).T
 
-    def format(self, points):
-        assert(len(points) == 10)
-        return points
+    a = frame @ a
+    b = frame @ b
+    c = frame @ c
 
-    def verboseFormat(self, formatted):
-        _, xL, zL, sinL, cosL, _, xR, zR, sinR, cosR = formatted
+    # scale down
+    a[2] *= SCALE_FACTOR
+    b[2] *= SCALE_FACTOR
+    c[2] *= SCALE_FACTOR
 
-        leftFrame = np.array([\
-            [ cosL, 0,sinL,xL],\
-            [    0, 1,   0, 0],\
-            [-sinL, 0,cosL,zL],\
-            [0,0,0,1]])
-        rightFrame = np.array([\
-            [ cosR, 0,sinR,xR],\
-            [    0, 1,   0, 0],\
-            [-sinR, 0,cosR,zR],\
-            [0,0,0,1]])
+    # back to local frame
+    a = frame.T @ a
+    b = frame.T @ b
+    c = frame.T @ c
 
-        return [leftFrame, rightFrame]
-
+    return a,b,c
 
 
 class LineQueryTrajectory(QueryTrajectory):
@@ -111,7 +99,7 @@ class LineQueryTrajectory(QueryTrajectory):
 
     def calculate(self, obs, network):
 
-        lineLog, guideline, window, pastDirectionSegment, inputTrajectory, indices= obs
+        lineLog, guideline, window, pastDirectionSegment, inputTrajectory, inputDirection, indices = obs
         assert(len(guideline) >= 2)
 
         predicted = True if network else False
@@ -120,29 +108,27 @@ class LineQueryTrajectory(QueryTrajectory):
             inputTrajectory = np.delete(inputTrajectory, 1, axis=1)
             directions = network.predict((start, inputTrajectory), window)
 
-#            indices = int(window/2) + np.array([0, 9, 19, 29])
-#            print('indices', indices)
-#            print()
-#            directions = directions[indices]
-
         guideline = list(guideline)
 
-        while len(guideline) < 4:
+        count = self.getFutureFeatureCount()
+
+        while len(guideline) < (1 + count):
             FT = self.FUTURE_TERM
             p1, p2 = guideline[-2:]
             v = p2 - p1
             guideline.append(p2 + v)
 
         target = []
+        # targetDirections = []
 
         tangents = inputTrajectory[1:] - inputTrajectory[:-1]
         tangents = np.vstack((tangents, tangents[-1]))
         lengths = np.linalg.norm(tangents, axis=1)
 
-        while len(indices) < 4:
+        while len(indices) < (1 + count):
             indices = np.append(indices, indices[-1])
 
-        for i in [1,2,3]:
+        for i in range(1, (1 + count)):
             if predicted:
                 direction = np.insert(directions[i], 1, 0) # index, value
             else:
@@ -151,10 +137,23 @@ class LineQueryTrajectory(QueryTrajectory):
 #                tangent = tangent / (np.linalg.norm(tangent) + 1e-9)
 #                direction = tangent
 
-                x,_,z=tangents[indices[i]] / (lengths[indices[i]] + 1e-9)
-                direction = [x,0,z]
+                t = tangents[indices[i]] * [1,0,1]
+                direction = t / np.linalg.norm(t)
+
+                if inputDirection is not None: # has joystick input
+                    forward = [0,0,1]
+                    theta = np.arccos(inputDirection[-1])
+                    if inputDirection[0] > 0:
+                        theta = -theta
+                    direction = rotationY(np.degrees(theta)) @ direction
 
             target.append(np.concatenate((guideline[i], direction)))
+            # targetDirections.append(direction)
+
+        # target = []
+        # for i, p in enumerate(futurePositionsScaledInTangentialFrame(guideline[1:])):
+            # target.append(np.concatenate((p, targetDirections[i])))
+
         return target
 
 
@@ -188,8 +187,6 @@ class DirectionQueryTrajectory(QueryTrajectory):
         print('Invalid operation: data/Trajectory.KeyBoardQueryTrajectory')
         return None
 
-
-
 class FutureMotionQueryTrajectory(QueryTrajectory):
     def __init__(self, FUTURE_TERM):
         super().__init__(FUTURE_TERM)
@@ -204,11 +201,12 @@ class FutureMotionQueryTrajectory(QueryTrajectory):
         localFrame = pose.getLocalFrame()
         invLocalFrame = np.linalg.inv(localFrame)
 
-        for dt in [FUTURE_TERM, FUTURE_TERM*2, FUTURE_TERM*3]:
+        count = self.getFutureFeatureCount()
+        for dt in range(1, count + 1):
+            dt *= FUTURE_TERM
 
             futurePose = motion.getFuturePosture(dt)
             if futurePose:
-
                 futureLocalFrame = futurePose.getLocalFrame()
 
                 diff = invLocalFrame @ futureLocalFrame
@@ -218,6 +216,13 @@ class FutureMotionQueryTrajectory(QueryTrajectory):
             else:
                 target.append(self.__eulerExpl__(motion, dt))
         
+
+        # scale feature
+        # p1,p2,p3 = futurePositionsScaledInTangentialFrame([p[:3] for p in target])
+        # target[0][:3] = p1
+        # target[1][:3] = p2
+        # target[2][:3] = p3
+
         return target
     
     def __eulerExpl__(self, motion, dt):
@@ -228,3 +233,5 @@ class FutureMotionQueryTrajectory(QueryTrajectory):
         vel = diff[:3, 3]
         axis = exp(log(diff) * dt)[:3, 2] # Z forward
         return np.concatenate((vel * dt, axis))
+
+

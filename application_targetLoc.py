@@ -29,7 +29,7 @@ class RunApp(wx.App):
         
         #frame = wx.Frame(None, -1, "Run Application", size=(1050,1000))
         frame = wx.Frame(None, -1, "Run Application", size=(2060,2000))
-        # frame = wx.Frame(None, -1, "Run Application", size=(3550,2200))
+        #frame = wx.Frame(None, -1, "Run Application", size=(3550,2200))
         frame.CreateStatusBar()
 
         # --- Menu Bar ---
@@ -86,6 +86,10 @@ class RunApp(wx.App):
                 network.load_weights(weightPath)
                 print('Loaded pace network')
 
+        # TEST!!
+        from render.ObstacleRendererForTargetLoc import ObstacleRenderer
+        self.window.appendRenderer('obstacles', ObstacleRenderer(1/30))
+
         data = None
         if dataPath[-3:] == 'bin':
             data = bvhMenu.load(dataPath)
@@ -96,14 +100,14 @@ class RunApp(wx.App):
             'motionMatcher':None,
             }
 
-        def composeCharacter(data, network):
-            mstream = MotionStream(data)
+        def composeCharacter(data, network, startXPos):
+            mstream = MotionStream(data, startXPos)
             mstream.setNetwork(False, network)
             return mstream
 
         namePool = ['A', 'B', 'C']
         for i in range(characters):
-            self.window.appendRenderer(namePool[i], MotionRenderer(composeCharacter(data, network)))
+            self.window.appendRenderer(namePool[i], MotionRenderer(composeCharacter(data, network, i)))
 
 
 

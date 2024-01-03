@@ -5,8 +5,7 @@ from bisect import bisect_right
 from data.Trajectory import qt_factory 
 from util.matrixFormulas import *
 
-FEATURE_DIM = 25 #27
-FT_LENGTH = 10 #12
+# FEATURE_DIM = 27
 IGNORE_NUM = 10
 
 class MotionMatcher():
@@ -33,6 +32,7 @@ class MotionMatcher():
                 tree_features += list(self.features[prev : n - IGNORE_NUM])
 
         self.tree = cKDTree(np.array(tree_features, dtype=np.float32))
+        self.tree_features = tree_features
         self.lastFeatureNums = np.cumsum([len(m.getPostures()) - IGNORE_NUM for m in motions])
         assert(len(tree_features) == self.lastFeatureNums[-1])
         print('KD Tree Generated.')
@@ -42,11 +42,11 @@ class MotionMatcher():
 
 
     def normalize(self, vector):
-        assert(len(vector)==FT_LENGTH)
-        return (vector - self.mu[-FT_LENGTH:]) / self.sig[-FT_LENGTH:]
+        # assert(len(vector)==12)
+        return (vector - self.mu[15:]) / self.sig[15:]
     def denormalize(self, normalizedVector):
-        assert(len(normalizedVector)==FT_LENGTH)
-        return normalizedVector * self.sig[-FT_LENGTH:] + self.mu[-FT_LENGTH:]
+        # assert(len(normalizedVector)==12)
+        return normalizedVector * self.sig[15:] + self.mu[15:]
 
     def getFeature(self, index):
         return self.features[index]
@@ -54,21 +54,24 @@ class MotionMatcher():
     def getNodePositions(self, index):
         return self.nodePositions[index]
 
-    def findByQuery(self, query):
-        _, i = self.tree.query(query, k=1)
-        cnt = bisect_right(self.lastFeatureNums, i)
-        return i + IGNORE_NUM * cnt 
+    def findByQuery(self, query, k=1):
+        if k == 1:
+            d, i = self.tree.query(query, k=1)
+            cnt = bisect_right(self.lastFeatureNums, i)
+            return d, i + IGNORE_NUM * cnt 
+
+        distances, indices = self.tree.query(query, k=k)
+        return distances, [i + IGNORE_NUM * bisect_right(self.lastFeatureNums, i) for i in indices]
+
 
     def _calculateFeatures(self):
         features = None
         nodePositions = []
-
-        qt = qt_factory(None, self.FUTURE_TERM)
-
         for motion in self.motions:
             root = motion.getSkeletonRoot()
             motion.reset()
             for pose in motion.getPostures():
+                qt = qt_factory(None, self.FUTURE_TERM)
                 t = qt.format(qt.calculate(motion))
 
                 nodePositions.append(dict(pose.forwardKinematics(root)))
@@ -127,7 +130,7 @@ class MotionMatcher():
 
         feature = np.concatenate((leftFootPos, rightFootPos, leftFootVel, rightFootVel,\
                     hipVel, futureTrajectory))
-        assert(len(feature) == FEATURE_DIM)
+        # assert(len(feature) == FEATURE_DIM)
         return feature
 
 

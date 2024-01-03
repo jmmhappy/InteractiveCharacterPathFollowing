@@ -6,7 +6,7 @@ import wx.glcanvas as glcanvas
 
 try:
     from OpenGL.GL import *
-    from OpenGL.GLUT import *
+#    from OpenGL.GLUT import *
     haveOpenGL = True
 except ImportError:
     haveOpenGL = False
@@ -27,16 +27,18 @@ class MotionRenderer(RendererInterface):
         super().__init__(db.getFrameTime())#self.FRAMETIME 
 
         self.TOTAL_FRAMECOUNT = db.getTotalFrameCount()
-#        self.COLOR = (0,0,155)#np.asarray(np.random.rand(3) * 255, dtype=int)
+        self.COLOR = (0,0,155)#np.asarray(np.random.rand(3) * 255, dtype=int)
 #        self.COLOR = (158,15,15) # red
 #        self.COLOR = (0,155,0) # green
-        self.COLOR = (200,100,30) # orange
+#        self.COLOR = (200,100,30) # orange
 #        self.COLOR = (10,10,30) # purple
 
         self.stack = []
         self.motionStream = db 
 
         self.instant = np.array([0,0,1])
+
+        self.goal = None#np.zeros(2) 
 
         self.reset()
 
@@ -71,6 +73,10 @@ class MotionRenderer(RendererInterface):
 
     def setCurrentFrameNum(self, value):#slider
         self.motionStream.setCurrentFrameNum(value)
+    def setFutureTrajectoryIndex(self, value):
+        self.motionStream.setFutureTrajectoryIndex(value)
+    def getFutureTrajectoryIndex(self):
+        return self.motionStream.getFutureTrajectoryIndex()
     def getFrameNumberLog(self):
         return self.motionStream.getLog('frame number')
     def getRootTrajectoryLog(self):
@@ -88,6 +94,9 @@ class MotionRenderer(RendererInterface):
         postures = self.motionStream.getLog('posture')
 
         def drawCharacter(color, skel, pose):
+            if not options['characterDrawing']:
+                return
+
             self.drawBvh(skel, pose, options['meshDrawing'], color) 
 
             if options['logDrawing']:
@@ -96,12 +105,12 @@ class MotionRenderer(RendererInterface):
                     self.drawBvh(skel, pose, options['meshDrawing'], color)
 
         def drawGoal():
+            if self.goal is None:return
+#            if sum(self.goal) == 0:
+#                self.setGoal(observation['map'])
 
-            goal = observation['target']
-            if goal is None:return
-
-            x,z = goal
-            if np.linalg.norm(goal - self.getFocusPoint()[[0,2]]) < 0.5:
+            x,z = self.goal
+            if np.linalg.norm(self.goal - self.getFocusPoint()[[0,2]]) < 0.5:
                 drawCube((0,0,0), np.array([x,1,z]), w=.1,h=2,l=.1)
                 return
 
@@ -120,25 +129,7 @@ class MotionRenderer(RendererInterface):
 
         if options["r_arrows"]:
             futureTrajectory = self.motionStream.getLog('query')[-len(self.stack)-1]
-            # self.drawArrows(futureTrajectory)
-            self.drawArrows([futureTrajectory[0]], (0,0,215)) # left
-            self.drawArrows([futureTrajectory[1]], (150,150,215))
-
-            futureTrajectory = self.motionStream.getLog('original')[-len(self.stack)-1]
-            self.drawArrows([futureTrajectory[0]], (215,0,0))
-            self.drawArrows([futureTrajectory[1]], (215,150,150))
-
-
-        if observation["joystick"] is not None:
-            x, z = self.getFocusPoint()[[0,2]]
-            v_x, v_z = observation["joystick"]
-            size = np.linalg.norm(observation["joystick"])
-            _x, _, _z = np.cross([0,1,0], np.array([v_x,0,v_z])/size)
-            frame = np.array([[_x,0,v_x,x],
-                              [0,1,0,0.001],
-                              [_z,0,v_z,z],
-                              [0,0,0,1]])
-            drawQuadArrow((0,0,0), frame)
+            self.drawArrows(futureTrajectory)
 
         # shadow
         glPushMatrix()
@@ -167,6 +158,9 @@ class MotionRenderer(RendererInterface):
         if options["r_cornerPoint"] and taskInfo["cornerPoint"]:
             p = points[taskInfo["cornerPoint"]]
             drawCircle((0,176,80), p[0], p[2], 2.1)
+
+        if options["r_rootTrajectory"]:
+            self.drawTrajectory()
 
 
     def setFeatureWeights(self, values):
@@ -236,15 +230,32 @@ class MotionRenderer(RendererInterface):
 
         glPopMatrix()
 
-    def drawArrows(self, frames, color=(0,0,237)):
+    def drawArrows(self, frames):
         if frames is None:
             return
         for i, frame in enumerate(frames):
             frame[1,3] =0.001# On ground
             #drawQuadArrow((81*i,82*i,237), frame)
-            drawQuadArrow(color, frame)
+            drawQuadArrow((0,0,237), frame)
             #x,z = frame[[0,2],3]
             #drawCircle((0,0,235), x,z, scale=3)
+
+    def drawTrajectory(self):
+        def drawLines(color, points):
+            r,g,b = color
+            glColor3ub(r,g,b)
+            glLineWidth(5)
+            glBegin(GL_LINES)
+            for i in range(0, len(points)-1):
+                p1, p2 = points[i:i+2]
+                glVertex3fv(p1)
+                glVertex3fv(p2)
+            glEnd()
+            glLineWidth(1)
+
+        r,g,b = self.COLOR
+        drawLines((r,g,b), self.motionStream.getLog('root')[:-len(self.stack) - 1])
+
 
     def reset(self):
 
@@ -252,7 +263,7 @@ class MotionRenderer(RendererInterface):
 
         self.emptyStack()
         self.motionStream.playReset()
-        self.update({'name':'default'})
+        self.update(None)
 
     def showCachePosture(self, back):
         postures = self.motionStream.getLog('posture')
@@ -266,3 +277,20 @@ class MotionRenderer(RendererInterface):
 
         return 0 
 
+    def setGoal(self, obstacles):
+        radius = 10
+
+        if not obstacles:
+            return np.random.uniform(-radius, radius, 2)
+
+        info = obstacles.getRenderInfo()
+        center, length = info['center'], info['length']
+        low, high = center - length/2 , center + length/2
+
+        while True: 
+            goal = [np.random.uniform(-radius, radius), np.random.uniform(3,radius)]
+            intersection = ((low < goal) & (goal < high)).T
+            intersection = intersection[0] & intersection[1]
+            if np.sum(intersection) == 0: # no intersection
+                break
+        self.goal += goal

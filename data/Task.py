@@ -2,12 +2,8 @@ import numpy as np
 from abc import *
 
 from bisect import bisect_left
-from data.Trajectory import qt_factory, QueryTrajectory
-
-from data.Trajectory import FutureContactQueryTrajectory
 
 maxVelocity = 3 # updated by slide bar, render.CanvasPanel
-FUTURE_TERM = 10 # assume 10Hz*3
 
 class TaskFactory():
     def __init__(self):
@@ -18,51 +14,24 @@ class TaskFactory():
 
         if userInput['name'] == 'position':
             return PositionTask(userInput['position'], userInput['obstacles'])
-        elif userInput["name"] == "joystick":
-            return JoystickTask(userInput["joystick"])
         elif userInput['name'] == 'direction':
             return DirectionTask(userInput['direction'])
         elif userInput['name'] == 'trajectory':
             return TrackingTask(pastRootTrajectory, userInput['trajectory'],\
-                pastDirections, userInput['amplifyCurve'])
-        return DefaultTask() 
+                pastDirections, userInput['amplifyCurve'], userInput['startFromNearest'],\
+                userInput['limitedUpdate'], userInput['joystick'])
+        return None
 
 
 class Task(metaclass=ABCMeta):
     def __init__(self):
-        self.name = None 
+        self.name = None
         self.obstacleMap = None
-        self.queryTrajectory = None
         self._meta = {}
 
     @abstractmethod
     def getObservation(self, currentState):
         return
-
-    def isReinforcementLearning(self):
-        assert(self.name is not None)
-        return self.queryTrajectory == None
-
-    def action(self, observation, actor):
-        assert(self.queryTrajectory)
-        qt = self.queryTrajectory
-        ft = qt.calculate(observation, actor)
-        ft = qt.format(ft)
-        return ft
-
-    def getLogInFrames(self, localFrame, action):
-        return [localFrame @ m for m in FutureContactQueryTrajectory.verboseFormat(None, action)]
-        # return [localFrame @ m for m in QueryTrajectory.verboseFormat(None, action)]
-
-class DefaultTask(Task):
-    def __init__(self):
-        super().__init__()
-        self.name = "default"
-        self.queryTrajectory = qt_factory(None, FUTURE_TERM)
-
-    def getObservation(self, _, __):
-        return None
-
 
 class PositionTask(Task):
     def __init__(self, pos, obstacles):
@@ -70,12 +39,7 @@ class PositionTask(Task):
         assert(len(pos) == 2)
         self.name = 'position'
         self._meta['position'] = pos
-
         self.obstacleMap = obstacles
-        if obstacles:
-            self.previousTerrain = obstacles.getLocalMap(np.identity(4)) # initial value
-        else:
-            self.previousTerrain = None
 
     def getObservation(self, feature, localFrame): # runtime
         x,z = self._meta['position']
@@ -83,84 +47,103 @@ class PositionTask(Task):
         character = np.append(feature[:15], goal[[0,2]])
 
         if self.obstacleMap:
-            currentTerrain = self.obstacleMap.getLocalMap(localFrame)
-            terrain = np.concatenate((self.previousTerrain, currentTerrain))
-
-            self.previousTerrain = currentTerrain # update
+            terrain = self.obstacleMap.getLocalMap(localFrame)
             return {'character':character, 'terrain':terrain}
 
         return character
-
-    def action(self, observation, actor):
-        if actor is None:
-            print("No policy network to query position.")
-            return None
-        
-        return actor.action(observation)
-        
-
-class JoystickTask(Task):
-    def __init__(self, jsInput):
-        super().__init__()
-        self.name = 'joystick'
-        self._meta['targetVelocity'] = jsInput
-    
-    def getObservation(self, feature, localFrame):
-        # used to update query at MotionStream.matchByQuery()
-        v_x, v_z = self._meta["targetVelocity"]
-        goal = np.linalg.inv(localFrame[:3,:3]) @ np.array([v_x,0,v_z])
-        character = np.append(feature[:15], goal[[0,2]])
-        return character 
-
-    def action(self, observation, actor):
-        if actor is None:
-            print("No policy network to query target velocity.")
-            return None
-        return actor.action(observation)
 
 class DirectionTask(Task):
     def __init__(self, keyflags):
         super().__init__()
         assert(type(keyflags) == dict)
         self.name = 'direction'
-        self.queryTrajectory = qt_factory(self.name, FUTURE_TERM)
         self._meta = keyflags
 
     def getObservation(self, _, __):
         return self._meta
 
 
-
 class TrackingTask(Task):
-    def __init__(self, past, future, directions, amplifying):
+    def __init__(self, past, userTrajectory, directions,\
+            amplifying, startFromNearest, limitedUpdate, joystick):
         super().__init__()
         self.name = 'tracking'
-        self.queryTrajectory = qt_factory(self.name, FUTURE_TERM)
+        
+        self._meta = {}
+        window = 120
+        self._meta['past'] = past
+        self._meta['user_trajectory'] = userTrajectory
+        self._meta['window'] = window
+        self._meta['direction_log'] = directions[-int(window/2):]
+        self._meta['joystick'] = joystick
+
+        # options
+        self._meta['amplifying'] = amplifying
+        self._meta['start_from_nearest'] = startFromNearest
+        self._meta['limited_update'] = limitedUpdate
+
+
+    def setFutureTrajectory(self, index, position=None, setLog=False):
+
+        def parseFutureTrajectory(index, position):
+            trajectory = self._meta['user_trajectory'] # includes past guideline
+            if len(trajectory) < 2:
+                return trajectory
+
+            if position is None:
+                position = self._meta['past'][-1]
+
+            if self._meta['start_from_nearest']:
+                dists = np.linalg.norm(trajectory - position, axis=1)
+                return trajectory[np.argmin(dists):]
+
+            MAX_MOVEMENT = 10
+            if self._meta['limited_update']:
+                seg = trajectory[index : index + MAX_MOVEMENT+1]
+                dists = np.linalg.norm(seg - position, axis=1)
+                minimum = np.argmin(dists)
+
+                index = index + minimum
+            else:
+                index += 1
+
+            index = min(len(trajectory) - 2, index)
+            return index
+
+
+        past = self._meta['past']
+        amplifying = self._meta['amplifying']
+
+        currentIndex = parseFutureTrajectory(index, position)
+        future = self._meta['user_trajectory'][currentIndex:]
 
         if len(future) <= 2:
-            queryPoints = future + (past[-1]*np.array([1,0,1]) - future[0]) 
+            queryPoints = future + (past[-1]*np.array([1,0,1]) - future[0])
             cornerPoint = None
             indices = [0]
         else:
+
             indices, extra = self._getTargetIndices(future)
             queryPoints, cornerPoint = self._amplifyCurve(amplifying, future, indices, extra['tangents'])
 
-        assert(len(queryPoints) <= 4)
+            # advance index at sharp corners
+            if cornerPoint is not None:
+                currentIndex += 2
+                future = self._meta['user_trajectory'][currentIndex:]
+                indices, extra = self._getTargetIndices(future)
+                queryPoints, cornerPoint = self._amplifyCurve(amplifying, future, indices, extra['tangents'])
 
-        self.indices = indices 
 
-        window = 120
+        # assert(len(queryPoints) <= 4)
 
-        self._meta = {
-            'past':past,
-            'future':future,
-            'window':window,
-            'direction_log':directions[-int(window/2):],
+        if setLog:
+            self.indices = indices
+            self._meta['future'] = future 
+            self._meta['cornerPoint'] = cornerPoint
+            self._meta['queryPoints'] = queryPoints
+            self._meta['limited'] = indices[-1] != 0
 
-            'cornerPoint':cornerPoint,
-            'queryPoints':queryPoints,
-            'limited':indices[-1] != 0,
-        }
+        return currentIndex
 
 
     def getObservation(self, _, localFrame):
@@ -170,8 +153,8 @@ class TrackingTask(Task):
         inputTrajectory = self._futurePointsInLocalFrame(localFrame)
 
         pastTrajectory = np.delete(past, 1, axis=1)
-        return pastTrajectory, queryPoints, self._meta['window'], direction_log, inputTrajectory, self.indices
-   
+        return pastTrajectory, queryPoints, self._meta['window'], direction_log, inputTrajectory, self._meta['joystick'], self.indices
+
     def _futurePointsInLocalFrame(self, localFrame):
         inv = np.linalg.inv(localFrame[:3,:3])
         points = self._meta['future']
@@ -213,8 +196,9 @@ class TrackingTask(Task):
     def _getTargetIndices(self, points):
 
         indices = np.array([i*10 for i in range(4)])
+        maxIndex = indices[-1] # of future trajectory
 
-        segment = points[:31]
+        segment = points[: maxIndex + 1]
         deltas = segment[1:] - segment[:-1]
         segLengths = np.linalg.norm(deltas, axis=1)
 
@@ -231,7 +215,7 @@ class TrackingTask(Task):
         queryLength = min(maxMovement, segLengths[-1])
 
         # limit velocity
-        maxIndex = bisect_left(segLengths, queryLength)
+        maxIndex = bisect_left(segLengths, queryLength) # of velocity-limited future trajectory
         queryScale = min(1, maxIndex / indices[-1])
         indices = np.array(indices * queryScale, int)
 
@@ -248,9 +232,18 @@ class TrackingTask(Task):
         # what to return
         result = [points[0]]
 
+        CORNER_LIMIT = np.radians(80)
+
         # CASE: User do not want amplifying OR Curve is too smooth to amplify
-        theta = np.arccos(np.clip(np.dot(tangents[0], tangents[indices[-1]]), -1, 1))
-        if (not flag) or (theta < np.pi/2):
+        hasCorner = False
+        stack_theta = []
+        for i in range(len(indices) - 1):
+            theta = np.arccos(np.clip(np.dot(tangents[indices[i]], tangents[indices[i+1]]), -1, 1))
+            stack_theta.append(theta)
+            if (theta > CORNER_LIMIT and not hasCorner):
+                hasCorner = True
+
+        if (not flag) or (not hasCorner):
             for i in indices[1:]:
                 result.append(points[i])
             return result, None 
@@ -262,8 +255,10 @@ class TrackingTask(Task):
         for i in range(len(indices) - 1):
             start, end = indices[i], indices[i+1]
             if not amplified:
-                theta = np.arccos(np.clip(np.dot(tangents[start], tangents[end]), -1, 1))
-                if theta > np.pi/2: # sharp corner exists
+                # theta = np.arccos(np.clip(np.dot(tangents[start], tangents[end]), -1, 1))
+                theta = stack_theta[i]
+
+                if theta > CORNER_LIMIT: # sharp corner exists
                     cornerInDegrees = []
                     for j in range(start, end):
                         theta = np.arccos(np.clip(np.dot(tangents[j], tangents[j+1]), -1, 1))

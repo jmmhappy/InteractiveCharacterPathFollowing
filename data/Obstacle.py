@@ -15,7 +15,7 @@ for i in np.arange(-RANGE/2, RANGE/2, RANGE/SIZE):
         M_L.append([i, 0, j, 1])
 M_L = np.array(M_L).T
 
-NUM_OBSTACLES = 100
+NUM_OBSTACLES = 200
 MAX_VELOCITY = 0.5
 
 class ObstacleMap:

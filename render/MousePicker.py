@@ -7,7 +7,6 @@ import scipy.ndimage.filters as filters
 class MousePicker:
     def __init__(self, canvasSize):
         self.trajectory = []
-        self.index = 0
         self.temp = []
         self.smoothTrajectory = []
 
@@ -16,8 +15,6 @@ class MousePicker:
         self.initTime = 0
 
         self.scaled = False
-
-        self.distance = []
 
         self.canvasWidth, self.canvasHeight = canvasSize
         
@@ -93,39 +90,12 @@ class MousePicker:
     def setTrajectory(self, t):
         self.temp = t
 
-    def spareOnlyFuture(self, startFromNearest, limitedUpdate, position, smoothInput):
-        trajectory = self.getTrajectory(smoothInput)
-
-#        self.distance.append(min(np.linalg.norm(trajectory - position, axis=1)))
-#        if True:#len(trajectory)-self.index < 5:
-#            print(np.mean(self.distance))
-
-        # update index 
-        if startFromNearest:
-            dists = np.linalg.norm(trajectory - position, axis=1)
-            return trajectory[np.argmin(dists):]
-
-        MAX_MOVEMENT = 10
-        if limitedUpdate:
-            segment = trajectory[self.index : self.index + MAX_MOVEMENT+1]
-            dists = np.linalg.norm(segment - position, axis=1)
-            minimum = np.argmin(dists)
-
-            self.index = self.index + minimum
-        else:
-            self.index += 1 
-
-        self.index = min(len(trajectory) - 2, self.index)
-        return trajectory[self.index:]
-
     def reset(self, clean=False):
         if clean:
             self.smoothTrajectory = []
             self.trajectory = []
             self.timeLog = []
 
-        self.distance = []
-        self.index = 0
 
     def isEmpty(self):
         return len(self.trajectory) == 0
@@ -146,8 +116,6 @@ class MousePicker:
         self.smoothTrajectory = []
         self.temp = []
         self.tempTimeLog = []
-        self.index = 0
-        self.distance = []
 
     def scale(self, pos, controlflag, scaleflag):
 

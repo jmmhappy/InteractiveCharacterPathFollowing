@@ -3,6 +3,7 @@ from scipy.spatial import KDTree
 
 from data.Motion import Motion
 from data.Posture import Posture
+from data.Trajectory import qt_factory 
 from data.Task import TaskFactory
 from motion.MotionMatcher import MotionMatcher
 
@@ -33,9 +34,7 @@ class MotionStream:
         self.totalPosturesCount = data['total']
         self.motionMatcher = data['motionMatcher']
 
-        self.stitchStartPoint = postures[0].getPosition() * [0,1,0]
-        self.rootAlignVector, self.rootAlignMatrix = np.zeros(3), np.identity(4)
-
+        self.UPDATE_TERM = 6
         self.useNetwork = False 
 
         self.playReset()
@@ -44,24 +43,24 @@ class MotionStream:
         self.currentIndex = np.random.randint(0, self.totalPosturesCount) if random else 0
 
         self.lastQueriedFutureTrajectory = None
-        self.lastOriginalFutureTrajectory = None
         self.lastUpdated = 0
 
         initPose = self.postures[0]
 
-        poseFromOrigin = Posture()
-        
         # x,z=0,0
         x, z = self.startXPos
 
+        poseFromOrigin = Posture()
         poseFromOrigin.setPosture(np.array([x, initPose.getPosition()[1], z]), [np.identity(4)])
 
-        self.setRootAlignment(poseFromOrigin, self.postures[self.currentIndex])
+        rootAlignVector, rootAlignMatrix = poseFromOrigin.rootAlignment(self.postures[self.currentIndex])
+
+        self.futureTrajectoryIndex = 0
 
 
         global LEFT_FOOT, RIGHT_FOOT
         skel = self.motions[0].getSkeletonRoot()
-        nodePos = dict(initPose.forwardKinematics(skel, footOnly=True))
+        nodePos = dict(initPose.forwardKinematics(skel))
         self.previousContacts = {
             'left':(False, nodePos[LEFT_FOOT], 0, None),
             'right':(False, nodePos[RIGHT_FOOT], 0, None)
@@ -71,10 +70,9 @@ class MotionStream:
             'root':[np.array([0,0,0])],
             'direction':[np.array([0,0,1,1])],
             'frame number':[self.currentIndex],
-            'posture':[self.postureRootAlignment(self.postures[self.currentIndex])],
+            'posture':[self.postureRootAlignment(self.postures[self.currentIndex], self.postures[self.currentIndex].getPosition(), rootAlignVector, rootAlignMatrix)],
 
             'query':[[]],
-            'original':[[]],
 
             'taskInfo':[{
                 'cornerPoint':None,
@@ -89,23 +87,32 @@ class MotionStream:
 
     def poseUpdate(self, frameNum, userInput, action=None, stitch=True):
 
+        def needMotionMatching():
+            return frameNum > 0
+
         global taskFactory
 
         STITCH_RANGE = 6
         motion = self.getCurrentMotion()
 
-        if self.motionMatcher is not None:
+        rootAlignVector, rootAlignMatrix = np.zeros(3), np.identity(4)
+
+        if self.motionMatcher is not None and needMotionMatching():
 
             task = taskFactory.create(self.log['root'], self.log['direction'], userInput)
+            if task is None:
+                return [self.currentIndex]
 
             poseBeforeQuery = self.log['posture'][-1]
 
-            self.currentIndex = self.matchByQuery(frameNum, task, motion, action)
+            self.currentIndex = self.matchByQuery(frameNum, task, motion, action, userInput["extendedSearch"])
             poseFromDB = self.postures[self.currentIndex]
-            self.setRootAlignment(poseBeforeQuery, poseFromDB)
+            rootAlignVector, rootAlignMatrix = poseBeforeQuery.rootAlignment(poseFromDB)
+
+            stitchStartPoint = poseFromDB.getPosition()
 
             # calculate the difference between m2^0 and m1^N
-            poseAligned = self.postureRootAlignment(poseFromDB)
+            poseAligned = self.postureRootAlignment(poseFromDB, stitchStartPoint, rootAlignVector, rootAlignMatrix)
             p_diff = poseBeforeQuery.getPosition()[1] - poseAligned.getPosition()[1]
             o_diff = [log(o2.T @ o1) for o1, o2 in zip(poseBeforeQuery.getOrientations(), poseAligned.getOrientations())]
             difference = (p_diff, o_diff)
@@ -114,9 +121,10 @@ class MotionStream:
             for i in range(STITCH_RANGE):
                 poseFromDB, self.currentIndex = self.nextPosture()
                 if stitch:
-                    poseToRender = self.postProcess(poseFromDB, difference, (i+1)/STITCH_RANGE)
+                    poseToRender = self.postProcess(poseFromDB, stitchStartPoint,\
+                            rootAlignVector, rootAlignMatrix, difference, (i+1)/STITCH_RANGE)
                 else:
-                    poseToRender = self.postProcess(poseFromDB)
+                    poseToRender = self.postProcess(poseFromDB, stitchStartPoint, rootAlignVector, rootAlignMatrix)
 
                 if task and task.name == 'tracking':
                     self.updateLog(self.currentIndex, poseToRender, task._meta)
@@ -126,16 +134,14 @@ class MotionStream:
             return indices
 
         poseFromDB, self.currentIndex = self.nextPosture()
-        poseToRender = self.postProcess(poseFromDB)
+        poseToRender = self.postProcess(poseFromDB, self.log['root'][-1], rootAlignVector, rootAlignMatrix)
 
         self.updateLog(self.currentIndex, poseToRender, None)
         return [self.currentIndex]
 
 
-    def matchByQuery(self, frameNum, task, motion, action):
-
+    def matchByQuery(self, frameNum, task, motion, action, extendedSearch):
         assert(self.log['frame number'][-1] == frameNum)
-        assert(task)
 
         pose = self.log['posture'][-1]
         localFrame = pose.getLocalFrame()
@@ -143,48 +149,102 @@ class MotionStream:
         query = self.motionMatcher.getFeature(frameNum).copy() # normalized
         network = self.motionMatcher.network if self.useNetwork else None
 
-        originalAction = query[15:]
-        originalAction = self.motionMatcher.denormalize(originalAction)
+        assert(task is not None)
 
-        if action is None: # runtime
-            obs = task.getObservation(query, localFrame)
-            obs = motion if obs is None else obs
-            action = task.action(obs, network)
+        if task.name == 'tracking':
+            self.futureTrajectoryIndex = task.setFutureTrajectory(self.futureTrajectoryIndex, None, True)
 
-        if task.isReinforcementLearning():
+        obs = task.getObservation(query, localFrame)
+        qt = qt_factory(task.name, self.motionMatcher.FUTURE_TERM)
+
+        if action is not None:
             assert(self.useNetwork is True)
             action = self.motionMatcher.denormalize(action)
 
-            # action[2:4] /= np.linalg.norm(action[2:4])
-            # action[6:8] /= np.linalg.norm(action[6:8])
-            # action[10:12] /= np.linalg.norm(action[10:12])
+            action[2:4] /= np.linalg.norm(action[2:4])
+            action[6:8] /= np.linalg.norm(action[6:8])
+            action[10:12] /= np.linalg.norm(action[10:12])
 
-            action[3:5] /= np.linalg.norm(action[3:5])
-            action[8:10] /= np.linalg.norm(action[8:10])
+            query[-12:] = self.motionMatcher.normalize(action)
 
-        query[15:] = self.motionMatcher.normalize(action)
+            ft = action
+            _, nextFrameNum = self.motionMatcher.findByQuery(query)
+        else:
+            ft = qt.calculate(obs, network)
+            ft = qt.format(ft)
+            query[15:] = self.motionMatcher.normalize(ft)
 
-        self.lastQueriedFutureTrajectory = task.getLogInFrames(localFrame, action)
-        self.lastOriginalFutureTrajectory = task.getLogInFrames(localFrame, originalAction)
-        nextFrameNum = self.motionMatcher.findByQuery(query)
 
-        if frameNum == nextFrameNum: # queried self
+            # import time
+            # now = time.time()
+
+            flag = extendedSearch["flag"]
+            K = extendedSearch["K"]
+            L = extendedSearch["L"]
+
+            if not flag or (K == 1 and L == 1):
+                # k = 1, l = 1, original motion matching
+                _, nextFrameNum = self.motionMatcher.findByQuery(query)
+
+            else:
+                _, nextFrameNum = self.queryLoop(query, task, qt, self.futureTrajectoryIndex, pose, K, L)
+
+            # print('k=%d, L=%d'%(K,L), time.time() - now)
+
+           
+        self.lastQueriedFutureTrajectory = [localFrame @ m for m in qt.verboseFormat(ft)]
+
+        if frameNum == nextFrameNum:
             return frameNum + 1
         return nextFrameNum
 
 
-    def postProcess(self, poseFromDB, difference=None, stitchRatio=None):
+
+    def queryLoop(self, query, task, qt, futureIndex, pose, K, L, loop=1):
+        minDist = np.float("inf")
+        nextFrameNum = 0
+
+        if L == loop:
+            return self.motionMatcher.findByQuery(query, 1)
+
+        for d, f in zip(*self.motionMatcher.findByQuery(query, K)):
+            nextQuery, nextFutureIndex, nextPose = self.findNextQuery(f, task, qt, futureIndex, pose)
+
+            dist = d + self.queryLoop(nextQuery, task, qt, nextFutureIndex, nextPose, K, L, loop + 1)[0] # only distance
+            if minDist > dist:
+                minDist = dist
+                nextFrameNum = f
+        return minDist, nextFrameNum
+
+
+    def findNextQuery(self, frame, task, qt, futureIndex, pose):
+        rootAlignVector, rootAlignMatrix = pose.rootAlignment(self.postures[frame])
+        stitchStartPoint = self.postures[frame].getPosition()
+
+        # calculate frame+6th position & root rotation
+        poseAligned = self.postureRootAlignment(self.postures[frame + 6], stitchStartPoint,\
+                rootAlignVector, rootAlignMatrix)
+        localframe = poseAligned.getLocalFrame()
+
+        futureIndex = task.setFutureTrajectory(futureIndex, localframe[:3,3])
+        obs = task.getObservation(None, localframe)
+        ft = qt.format(qt.calculate(obs, None))
+
+        query = self.motionMatcher.getFeature(frame + 6).copy()
+        query[15:] = ft
+        return query, futureIndex, poseAligned
+
+
+    def postProcess(self, poseFromDB, stitchStartPoint, rootAlignVector, rootAlignMatrix, difference=None, stitchRatio=None):
         # Root align
         skeleton = self.getSkeletonRoot()
-        pose = self.postureRootAlignment(poseFromDB)
+        pose = self.postureRootAlignment(poseFromDB, stitchStartPoint, rootAlignVector, rootAlignMatrix)
         contacts = poseFromDB.getFootContacts()
         footNames = (LEFT_FOOT, RIGHT_FOOT)
 
         # Stitch
         if stitchRatio:
             pose.interpolate(difference, stitchRatio) 
-        else:
-            return pose
 
         if contacts[0] == None:
             return pose
@@ -192,13 +252,14 @@ class MotionStream:
         # IK catch foot sliding
         CONTACT_STITCH_RANGE = 5
 
+        nodePos = dict(pose.forwardKinematics(skeleton))
+
         for i, key in enumerate(['left', 'right']):
             prevContact, startPosition, count, difference = self.previousContacts[key]
 
             if not prevContact and contacts[i]:
                 count = 0 # new phase
 
-                nodePos = dict(pose.forwardKinematics(skeleton, footOnly=True))
                 p = nodePos[footNames[i]]
                 startPosition = (pose.getLocalFrame() @ np.append(p,1))[:3]
 
@@ -227,11 +288,11 @@ class MotionStream:
         return pose
 
 
-    def postureRootAlignment(self, pose):
-        pos = pose.stitchedPosition(self.stitchStartPoint, self.rootAlignVector, self.rootAlignMatrix)
+    def postureRootAlignment(self, pose, stitchStartPoint, rootAlignVector, rootAlignMatrix):
+        pos = pose.stitchedPosition(stitchStartPoint, rootAlignVector, rootAlignMatrix)
         ori = pose.orientations.copy()
 
-        alignedRootFrame = self.rootAlignMatrix @ pose.orientations[0]
+        alignedRootFrame = rootAlignMatrix @ pose.orientations[0]
         ori[0] = alignedRootFrame 
 
         pose = Posture()
@@ -255,7 +316,7 @@ class MotionStream:
 #                for i, m in enumerate(mat):
 #                    ori[i][:3,:3] = m
 #
-#                ori[0] = self.rootAlignMatrix @ ori[0] 
+#                ori[0] = rootAlignMatrix @ ori[0] 
 #                pose.setPosture(pos, ori)
 #
 
@@ -272,7 +333,6 @@ class MotionStream:
         self.log['taskInfo'].append(taskInfo)
 
         self.log['query'].append(self.lastQueriedFutureTrajectory)
-        self.log['original'].append(self.lastOriginalFutureTrajectory)
 
         if short:
             self.log['root'] = self.log['root'][-10:]
@@ -309,10 +369,6 @@ class MotionStream:
             return True
         return False
 
-    def setRootAlignment(self, destinationPose, targetPose):
-        self.stitchStartPoint = targetPose.getPosition()
-        self.rootAlignVector, self.rootAlignMatrix = destinationPose.rootAlignment(targetPose)
-
     def setPostureIndex(self, value):
         self.currentIndex = value
        
@@ -333,6 +389,11 @@ class MotionStream:
         return motion
     def getLog(self, key):
         return self.log.get(key)
+
+    def setFutureTrajectoryIndex(self, value):
+        self.futureTrajectoryIndex = value
+    def getFutureTrajectoryIndex(self):
+        return self.futureTrajectoryIndex
 
 # -------------------------------------------------------------------------------------
     def getSkeletonRoot(self):

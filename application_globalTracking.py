@@ -29,7 +29,7 @@ class RunApp(wx.App):
         
         #frame = wx.Frame(None, -1, "Run Application", size=(1050,1000))
         frame = wx.Frame(None, -1, "Run Application", size=(2060,2000))
-        # frame = wx.Frame(None, -1, "Run Application", size=(3550,2200))
+        #frame = wx.Frame(None, -1, "Run Application", size=(3550,2200))
         frame.CreateStatusBar()
 
         # --- Menu Bar ---
@@ -85,6 +85,10 @@ class RunApp(wx.App):
                 network = BiGRUNetwork()
                 network.load_weights(weightPath)
                 print('Loaded pace network')
+
+        # TEST!!
+        from render.ObstacleRendererForGlobalTracking import ObstacleRenderer
+        self.window.appendRenderer('obstacles', ObstacleRenderer(1/30))
 
         data = None
         if dataPath[-3:] == 'bin':
