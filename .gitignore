@@ -6,7 +6,6 @@ output/
 profiling
 *.sub
 *_condor.py
-*.txt
 *.npz
 *.npy
 *.zip
