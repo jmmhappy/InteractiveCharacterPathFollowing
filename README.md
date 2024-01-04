@@ -9,6 +9,16 @@ This project demonstrates an interactive character path-following system using l
 This project is based on the research paper titled "[Interactive Character Path-Following Using Long-Horizon Motion Matching With Revised Future Queries](https://doi.org/10.1109/ACCESS.2023.3240589)" by Jeongmin Lee, Taesoo Kwon, and Yoonsang Lee, published in IEEE Access in 2023.
 
 
+## Prerequisites
+
+This project requires the below prerequisites:
+
+```
+pip3 install -U -f https://extras.wxpython.org/wxPython4/extras/linux/gtk3/your_linux wxPython
+pip3 install pybind11
+sudo apt-get install libeigen3-dev
+```
+
 
 ## How to Use
 
@@ -73,7 +83,14 @@ make check -j 4
 
 ```
 
-Check a pybind11 tutorial https://pybind11.readthedocs.io/en/latest/basics.html#first-steps for more details.
+Check pybind11 tutorial https://pybind11.readthedocs.io/en/latest/basics.html#first-steps for more details.
+
+
+Notes:
+
+1. If your computer cannot `find_package(pybind11)`, try installing `pip3 install "pybind3[global]"`. Or you can manually add the package path as a cmake option. For example, `cmake .. -Dpybind11_DIR=/path/to/pybind11/share/cmake/pybind11`.
+
+2. If your computer cannot find `Eigen/Core`, try making a softlink. `sudo ln -s /usr/include/eigen3/Eigen /usr/include/Eigen`.
 
 
 
