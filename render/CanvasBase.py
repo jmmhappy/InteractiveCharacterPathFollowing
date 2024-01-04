@@ -29,8 +29,8 @@ class CanvasBase(glcanvas.GLCanvas):
         self.init = False
         self.context = glcanvas.GLContext(self)
 
-        #self.SetMinSize((800,800))
-        self.SetMinSize((1800,1800))
+        self.SetMinSize((800,800))
+        # self.SetMinSize((1800,1800))
         # self.SetMinSize((3300,2000))
         self.isPlaying = False
         self.options = {

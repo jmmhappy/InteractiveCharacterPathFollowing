@@ -27,8 +27,8 @@ class RunApp(wx.App):
     def __init__(self, args):
         wx.App.__init__(self)
         
-        #frame = wx.Frame(None, -1, "Run Application", size=(1050,1000))
-        frame = wx.Frame(None, -1, "Run Application", size=(2060,2000))
+        frame = wx.Frame(None, -1, "Run Application", size=(1050,1000))
+        # frame = wx.Frame(None, -1, "Run Application", size=(2060,2000))
         # frame = wx.Frame(None, -1, "Run Application", size=(3550,2200))
         frame.CreateStatusBar()
 

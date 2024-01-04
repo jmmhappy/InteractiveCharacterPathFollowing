@@ -1,4 +1,5 @@
 import wx
+import wx.lib.scrolledpanel as scrolledpanel
 from render.CanvasBase import CanvasBase
 from render.MotionRenderer import MotionRenderer
 
@@ -17,10 +18,19 @@ class CanvasPanel(wx.Panel):
 
         canvas = CanvasBase(self)
         self.canvas = canvas
-        canvasSize = topBox.Add(canvas, 0, wx.EXPAND|wx.ALL).GetSize()
+        panelWidth = parent.GetSize().GetWidth() - canvas.GetMinSize().GetWidth()
+        panelHeight = canvas.GetMinSize().GetHeight()
+        topBox.Add(canvas, 0, wx.EXPAND|wx.ALL)
+        
 
         # Options 
         optionBox = wx.BoxSizer(wx.VERTICAL)
+
+        scrolledPanel = scrolledpanel.ScrolledPanel(self, wx.ID_ANY,\
+                size=(panelWidth, panelHeight))
+        self.scrolledPanel = scrolledPanel
+        scrolledPanel.SetupScrolling()
+        scrolledPanel.SetSizer(optionBox)
 
         self.addResetAndSaveButtons(optionBox)
         self.addFocusCharacterCheckBox(optionBox)
@@ -35,10 +45,11 @@ class CanvasPanel(wx.Panel):
         self.addExtendedSearchParameters(optionBox)
 
         optionBox.AddSpacer(20)
-        taskLabel = wx.StaticText(self, label='')
+        taskLabel = wx.StaticText(scrolledPanel, label='')
         optionBox.Add(taskLabel, 0, wx.ALIGN_CENTER)
 
-        topBox.Add(optionBox, 0)
+        topBox.Add(scrolledPanel)
+        # topBox.Add(optionBox, 0)
         box.Add(topBox, 0)
         box.AddSpacer(20)
 
@@ -206,7 +217,7 @@ class CanvasPanel(wx.Panel):
     def appendRenderer(self, name, renderer):
         self.Layout() # Refresh
 
-        text = wx.StaticText(self, id=wx.ID_ANY, label=name)
+        text = wx.StaticText(self.scrolledPanel, id=wx.ID_ANY, label=name)
         self.characterBox.Add(text)
         self.canvas.addRenderer(renderer, text)
 
@@ -244,8 +255,9 @@ class CanvasPanel(wx.Panel):
         self.Bind(wx.EVT_BUTTON, self.OnButton, buttonNext)
 
     def addResetAndSaveButtons(self, optionBox):
-        buttonApply = wx.Button(self, 2, 'Reset')
-#        buttonSave = wx.Button(self, 3, 'SaveDB')
+        _parent = self.scrolledPanel
+        buttonApply = wx.Button(_parent, 2, 'Reset')
+#        buttonSave = wx.Button(_parent, 3, 'SaveDB')
 
         dbButtonBox = wx.BoxSizer(wx.HORIZONTAL)
         dbButtonBox.Add(buttonApply, 0)
@@ -260,7 +272,9 @@ class CanvasPanel(wx.Panel):
 
 
     def addRenderMethodRadioBoxes(self, optionBox):
-        renderMethodBox = wx.RadioBox(self, wx.ID_ANY, majorDimension=3, \
+        _parent = self.scrolledPanel
+        width = _parent.GetSize().GetWidth() - 20
+        renderMethodBox = wx.RadioBox(_parent, wx.ID_ANY, majorDimension=3, size=(width, -1),\
             label="Choose a render method:", style=wx.RA_SPECIFY_ROWS, choices=['None', 'Line', 'Mesh'])
         renderMethodBox.Bind(wx.EVT_RADIOBOX, self.OnRadioBox)
         renderMethodBox.SetSelection(2)
@@ -269,8 +283,9 @@ class CanvasPanel(wx.Panel):
         optionBox.Add(renderMethodBox, 0, wx.ALIGN_CENTER)
 
     def addFocusCharacterCheckBox(self, optionBox):
-        checkBoxFocusCharacter = wx.CheckBox(self, id=1, label='Camera focus on character/object.')
-        checkBoxRecordScreenshots = wx.CheckBox(self, id=2, label='Record screenshots on timer.')
+        _parent = self.scrolledPanel
+        checkBoxFocusCharacter = wx.CheckBox(_parent, id=1, label='Camera focus on character/object.')
+        checkBoxRecordScreenshots = wx.CheckBox(_parent, id=2, label='Record screenshots on timer.')
 
         self.Bind(wx.EVT_CHECKBOX, self.OnFocusCheckBox, checkBoxFocusCharacter)
         self.Bind(wx.EVT_CHECKBOX, self.OnFocusCheckBox, checkBoxRecordScreenshots)
@@ -281,34 +296,38 @@ class CanvasPanel(wx.Panel):
 
 
     def addVelocitySlider(self, optionBox):
+        _parent = self.scrolledPanel
+        width = _parent.GetSize().GetWidth() - 20
         optionBox.AddSpacer(20)
-        optionBox.Add(wx.StaticText(self, wx.ID_ANY, label="Speed Limit:"))
-        velocitySlider = wx.Slider(self, value=30, minValue=0, maxValue=100,\
+        optionBox.Add(wx.StaticText(_parent, wx.ID_ANY, label="Speed Limit:", size=(width, -1)))
+        velocitySlider = wx.Slider(_parent, value=30, minValue=0, maxValue=100,\
             style=wx.SL_HORIZONTAL|wx.SL_LABELS, name="velocity slider")
         self.Bind(wx.EVT_SCROLL, self.OnVelocitySliderChanged, velocitySlider)
         optionBox.Add(velocitySlider, 0, wx.EXPAND|wx.ALL)
-        optionBox.Add(wx.StaticText(self, label="0m/s\t\t\t\t\t\t\t10m/s", id=wx.ID_ANY))
+        optionBox.Add(wx.StaticText(_parent, label="0m/s\t\t\t\t\t\t\t10m/s", id=wx.ID_ANY))
         optionBox.AddSpacer(20)
 
         self.canvas.SetFocus()
 
     def addQueryOptionCheckBoxes(self, optionBox):
+        _parent = self.scrolledPanel
+        width = _parent.GetSize().GetWidth() - 20
 
-        box = wx.StaticBoxSizer(wx.VERTICAL, self)
+        box = wx.StaticBoxSizer(wx.VERTICAL, _parent)
 
-        box.Add(wx.StaticText(self, id=wx.ID_ANY, label="Compose motion matching\nquery options:"))
+        box.Add(wx.StaticText(_parent, id=wx.ID_ANY, label="Compose motion matching\nquery options:", size=(width, -1)))
         box.AddSpacer(10)
 
         buttons = []
-        buttons.append(("scalePoints", wx.CheckBox(self, id=10, label="Resample Input in 150Hz")))
-        buttons.append(("smoothInput", wx.CheckBox(self, id=8, label="Smooth User-Drawn Path")))
-        buttons.append(("limitedUpdate", wx.CheckBox(self, id=3, label="Compute Desired Position\nof Current Character")))
-        buttons.append(("startFromNearest", wx.CheckBox(self, id=4, label="Use Nearest Path Point\nas Desired Position")))
-        buttons.append(("amplifyCurve", wx.CheckBox(self, id=7, label="Modify Future Position\nfor Sharp Corners")))
-        buttons.append(("extendedSearch",wx.CheckBox(self, id=11, label="Extended Motion Matching")))
-        buttons.append(("forceQuery", wx.CheckBox(self, id=5, label="Force query after a strong curve")))
-        buttons.append((None, wx.CheckBox(self, id=6, label="Use DirectionNet")))
-        buttons.append(("localControl", wx.CheckBox(self, id=9, label="Local Control Mode")))
+        buttons.append(("scalePoints", wx.CheckBox(_parent, id=10, label="Resample Input in 150Hz")))
+        buttons.append(("smoothInput", wx.CheckBox(_parent, id=8, label="Smooth User-Drawn Path")))
+        buttons.append(("limitedUpdate", wx.CheckBox(_parent, id=3, label="Compute Desired Position\nof Current Character")))
+        buttons.append(("startFromNearest", wx.CheckBox(_parent, id=4, label="Use Nearest Path Point\nas Desired Position")))
+        buttons.append(("amplifyCurve", wx.CheckBox(_parent, id=7, label="Modify Future Position\nfor Sharp Corners")))
+        buttons.append(("extendedSearch",wx.CheckBox(_parent, id=11, label="Extended Motion Matching")))
+        buttons.append(("forceQuery", wx.CheckBox(_parent, id=5, label="Force query after a strong curve")))
+        buttons.append((None, wx.CheckBox(_parent, id=6, label="Use DirectionNet")))
+        buttons.append(("localControl", wx.CheckBox(_parent, id=9, label="Local Control Mode")))
 
         for name, b in buttons:
             if b.GetId() not in [4,6,11]:
@@ -322,8 +341,10 @@ class CanvasPanel(wx.Panel):
         optionBox.Add(box, 0, wx.ALIGN_CENTER)
 
     def addLogRadioBoxes(self, optionBox):
-        box = wx.RadioBox(self, wx.ID_ANY, majorDimension=2,\
-            label="Pose rendering method:",\
+        _parent = self.scrolledPanel
+        width = _parent.GetSize().GetWidth() - 20
+        box = wx.RadioBox(_parent, wx.ID_ANY, majorDimension=2,\
+            label="Pose rendering method:", size=(width, -1),\
             style=wx.RA_SPECIFY_ROWS, choices=['Current Only', 'With Log'])
         box.Bind(wx.EVT_RADIOBOX, self.OnRadioBox)
 
@@ -335,19 +356,21 @@ class CanvasPanel(wx.Panel):
 
 
     def addRenderOptionCheckBoxes(self, optionBox):
-        box = wx.StaticBoxSizer(wx.VERTICAL, self)
+        _parent = self.scrolledPanel
+        width = _parent.GetSize().GetWidth() - 20
+        box = wx.StaticBoxSizer(wx.VERTICAL, _parent)
 
-        box.Add(wx.StaticText(self, id=wx.ID_ANY, label="What to render:"))
+        box.Add(wx.StaticText(_parent, id=wx.ID_ANY, label="What to render:"))
         box.AddSpacer(10)
 
         buttons = []
-        buttons.append(wx.CheckBox(self, id=12, label="Desired Position")) 
-        buttons.append(wx.CheckBox(self, id=13, label="User Given Positions"))
-        buttons.append(wx.CheckBox(self, id=14, label="Max Velocity Limited Position")) 
-        buttons.append(wx.CheckBox(self, id=15, label="Query Arrows")) 
-        buttons.append(wx.CheckBox(self, id=16, label="Query Points")) 
-        buttons.append(wx.CheckBox(self, id=17, label="Corner Point")) 
-        buttons.append(wx.CheckBox(self, id=18, label="Root Trajectory Log")) 
+        buttons.append(wx.CheckBox(_parent, id=12, label="Desired Position")) 
+        buttons.append(wx.CheckBox(_parent, id=13, label="User Given Positions"))
+        buttons.append(wx.CheckBox(_parent, id=14, label="Max Velocity Limited Position")) 
+        buttons.append(wx.CheckBox(_parent, id=15, label="Query Arrows")) 
+        buttons.append(wx.CheckBox(_parent, id=16, label="Query Points")) 
+        buttons.append(wx.CheckBox(_parent, id=17, label="Corner Point")) 
+        buttons.append(wx.CheckBox(_parent, id=18, label="Root Trajectory Log")) 
 
         for i, b in enumerate(buttons):
             if i == 3:
@@ -364,9 +387,10 @@ class CanvasPanel(wx.Panel):
 
 
     def addCharacterBoard(self, optionBox):
-        box = wx.StaticBoxSizer(wx.VERTICAL, self)
+        width = self.scrolledPanel.GetSize().GetWidth() - 20
+        box = wx.StaticBoxSizer(wx.VERTICAL, self.scrolledPanel)
 
-        box.Add(wx.StaticText(self, id=wx.ID_ANY, label="Characters in action(SHIFT KEY):"))
+        box.Add(wx.StaticText(self.scrolledPanel, id=wx.ID_ANY, label="Characters in action(SHIFT KEY):", size=(width,-1)))
         box.AddSpacer(10)
 
         optionBox.AddSpacer(20)
@@ -375,19 +399,21 @@ class CanvasPanel(wx.Panel):
         self.characterBox = box
 
     def addExtendedSearchParameters(self, optionBox):
-        box = wx.StaticBoxSizer(wx.VERTICAL, self)
+        _parent = self.scrolledPanel
+        width = _parent.GetSize().GetWidth() - 20
+        box = wx.StaticBoxSizer(wx.VERTICAL, _parent)
         
-        self.K = wx.TextCtrl(self, wx.ID_ANY, value="2")
-        self.L = wx.TextCtrl(self, wx.ID_ANY, value="3")
+        self.K = wx.TextCtrl(_parent, wx.ID_ANY, value="2")
+        self.L = wx.TextCtrl(_parent, wx.ID_ANY, value="3")
         
-        box.Add(wx.StaticText(self, wx.ID_ANY, label="K and L for Extende Motion Matching"))
-        box.Add(wx.StaticText(self, wx.ID_ANY, label="Enter K:"))
+        box.Add(wx.StaticText(_parent, wx.ID_ANY, label="K and L\nfor Extended\nMotion Matching\n", size=(width,-1)))
+        box.Add(wx.StaticText(_parent, wx.ID_ANY, label="Enter K:"))
         box.Add(self.K)
-        box.Add(wx.StaticText(self, wx.ID_ANY, label="Enter L(1<=L<=3):"))
+        box.Add(wx.StaticText(_parent, wx.ID_ANY, label="Enter L(1<=L<=3):"))
         box.Add(self.L)
         box.AddSpacer(20)
 
-        button = wx.Button(self, 19, "Apply")
+        button = wx.Button(_parent, 19, "Apply")
         box.Add(button)
         self.Bind(wx.EVT_BUTTON, self.OnButton, button)
 
