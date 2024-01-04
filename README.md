@@ -70,6 +70,7 @@ mkdir build
 cd build
 cmake ..
 make check -j 4
+mv <output> ..
 ```
 
 Notes:
