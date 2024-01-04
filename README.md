@@ -37,12 +37,13 @@ git checkout tracking
 
 ```
 
-Next, generate a data binary from the dataset using Python3. You can do this by running the following two lines in Python3 shell:
+Make sure that your bvh folder includes foot contacts. If none, generate by running `python3 parseFootContact.py BvhData/` **on terminal**.
+
+Next, generate a data binary from the dataset using Python3. You can do this by running the following two lines in **Python3 shell**:
 
 ```python
-
 from util.bvhMenu import generate
-generate("path_to_directory", "output.bin", True)
+generate("/path/to/repo/BvhData/", "output.bin", True)
 
 ```
 
