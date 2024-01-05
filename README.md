@@ -20,6 +20,37 @@ sudo apt-get install libeigen3-dev
 ```
 
 
+## Dataset
+
+This project uses the [Phase-Functioned Neural Networks for Character Control](http://siggraph.org/conference/archive/2017/program/presentations/holden-phase-functioned-neural-networks-character-control) dataset. This dataset was developed by Holden, D., Komura, T., & Saito, J. (2017), and can be freely used for academic or non-commercial purposes. For commercial use, please contact contact@theorangeduck.com.
+
+In our demo, we exclude jumping, t-poses, and walking on uneven terrain. That includes:
+
+LocomotionFlat01_000.bvh  
+LocomotionFlat01_000_mirror.bvh  
+LocomotionFlat02_000.bvh  
+LocomotionFlat02_000_mirror.bvh   
+LocomotionFlat02_001.bvh  
+LocomotionFlat02_001_mirror.bvh  
+LocomotionFlat03_000.bvh  
+LocomotionFlat03_000_mirror.bvh  
+LocomotionFlat05_000.bvh  
+LocomotionFlat05_000_mirror.bvh  
+LocomotionFlat06_000.bvh  
+LocomotionFlat06_000_mirror.bvh  
+LocomotionFlat06_001.bvh  
+LocomotionFlat06_001_mirror.bvh  
+LocomotionFlat07_000.bvh  
+LocomotionFlat07_000_mirror.bvh  
+LocomotionFlat08_000.bvh  
+LocomotionFlat08_000_mirror.bvh  
+LocomotionFlat08_001.bvh  
+LocomotionFlat08_001_mirror.bvh  
+LocomotionFlat10_000.bvh  
+LocomotionFlat10_000_mirror.bvh  
+
+
+
 ## How to Use
 
 
@@ -94,14 +125,6 @@ Note that the RNN network is optional.
 
 Notes:
 1. If something like "No context" error appears, add `PYOPENGL_PLATFORM=egl` in from of the command.  
-
-
-
-## Dataset
-
-This project uses the [Phase-Functioned Neural Networks for Character Control](http://siggraph.org/conference/archive/2017/program/presentations/holden-phase-functioned-neural-networks-character-control) dataset. This dataset was developed by Holden, D., Komura, T., & Saito, J. (2017), and can be freely used for academic or non-commercial purposes. For commercial use, please contact contact@theorangeduck.com.
-
-In our demo, we exclude jumping, t-poses, and walking on uneven terrain.
 
 
 ## Contributing
