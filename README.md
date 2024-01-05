@@ -22,7 +22,7 @@ sudo apt-get install libeigen3-dev
 
 ## Dataset
 
-This project uses the [Phase-Functioned Neural Networks for Character Control](http://siggraph.org/conference/archive/2017/program/presentations/holden-phase-functioned-neural-networks-character-control) dataset. This dataset was developed by Holden, D., Komura, T., & Saito, J. (2017), and can be freely used for academic or non-commercial purposes. For commercial use, please contact contact@theorangeduck.com.
+This project uses the [Phase-Functioned Neural Networks for Character Control](https://github.com/sreyafrancis/PFNN/tree/master/data/animations) dataset. This dataset was developed by Holden, D., Komura, T., & Saito, J. (2017), and can be freely used for academic or non-commercial purposes. For commercial use, please contact contact@theorangeduck.com.
 
 In our demo, we exclude jumping, t-poses, and walking on uneven terrain. That includes:
 
@@ -49,7 +49,7 @@ LocomotionFlat08_001_mirror.bvh
 LocomotionFlat10_000.bvh  
 LocomotionFlat10_000_mirror.bvh  
 
-
+Clone the PFNN repository and extract those bvh files into somewhere under this repository(`/path/to/repo/BvhData/`).
 
 ## How to Use
 
