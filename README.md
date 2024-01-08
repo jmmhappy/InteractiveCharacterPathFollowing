@@ -126,7 +126,7 @@ python3 application.py --data <data binary> --weights <rnn binary>
 Note that the RNN network is optional. 
 
 Notes:
-1. If something like "No context" error appears, add `PYOPENGL_PLATFORM=egl` in from of the command.  
+1. If something like "No context" error appears, add `PYOPENGL_PLATFORM=egl` in front of the command.  
 
 
 ## Contributing
