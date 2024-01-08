@@ -22,8 +22,9 @@ sudo apt-get install libeigen3-dev
 
 ## Dataset
 
-This project uses the [Phase-Functioned Neural Networks for Character Control](http://siggraph.org/conference/archive/2017/program/presentations/holden-phase-functioned-neural-networks-character-control) dataset. This dataset was developed by Holden, D., Komura, T., & Saito, J. (2017), and can be freely used for academic or non-commercial purposes. For commercial use, please contact contact@theorangeduck.com.
+This project uses the dataset of [Phase-Functioned Neural Networks for Character Control](https://theorangeduck.com/page/phase-functioned-neural-networks-character-control). This project was developed by Holden, D., Komura, T., & Saito, J. (2017), and can be freely used for academic or non-commercial purposes.
 
+You can directly download the PFNN dataset from [this link](http://theorangeduck.com/media/uploads/other_stuff/pfnn.zip). Browse the neccessary motion files at `pfnn\data\animations`.
 In our demo, we exclude jumping, t-poses, and walking on uneven terrain. That includes:
 
 LocomotionFlat01_000.bvh  
@@ -49,6 +50,7 @@ LocomotionFlat08_001_mirror.bvh
 LocomotionFlat10_000.bvh  
 LocomotionFlat10_000_mirror.bvh  
 
+Extract those bvh files into somewhere under this repository(`/path/to/repo/BvhData/`).
 
 
 ## How to Use
@@ -124,7 +126,7 @@ python3 application.py --data <data binary> --weights <rnn binary>
 Note that the RNN network is optional. 
 
 Notes:
-1. If something like "No context" error appears, add `PYOPENGL_PLATFORM=egl` in from of the command.  
+1. If something like "No context" error appears, add `PYOPENGL_PLATFORM=egl` in front of the command.  
 
 
 ## Contributing
