@@ -27,6 +27,7 @@ This project uses the dataset of [Phase-Functioned Neural Networks for Character
 You can directly download the PFNN dataset from [this link](http://theorangeduck.com/media/uploads/other_stuff/pfnn.zip). Browse the neccessary motion files at `pfnn\data\animations`.
 In our demo, we exclude jumping, t-poses, and walking on uneven terrain. That includes:
 
+```
 LocomotionFlat01_000.bvh  
 LocomotionFlat01_000_mirror.bvh  
 LocomotionFlat02_000.bvh  
@@ -48,7 +49,8 @@ LocomotionFlat08_000_mirror.bvh
 LocomotionFlat08_001.bvh  
 LocomotionFlat08_001_mirror.bvh  
 LocomotionFlat10_000.bvh  
-LocomotionFlat10_000_mirror.bvh  
+LocomotionFlat10_000_mirror.bvh
+```
 
 Extract those bvh files into somewhere under this repository(`/path/to/repo/BvhData/`).
 
