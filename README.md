@@ -52,7 +52,7 @@ LocomotionFlat10_000.bvh
 LocomotionFlat10_000_mirror.bvh
 ```
 
-Extract those bvh files into somewhere under this repository(`/path/to/repo/BvhData/`).
+Copy and paste those bvh files into a new directory somewhere under this repository(For example, `/path/to/repo/BvhData/`).
 
 
 ## How to Use
