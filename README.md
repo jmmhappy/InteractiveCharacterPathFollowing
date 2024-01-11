@@ -6,7 +6,7 @@ This project demonstrates an interactive character path-following system using l
 
 
 
-This project is based on the research paper titled "[Interactive Character Path-Following Using Long-Horizon Motion Matching With Revised Future Queries](https://doi.org/10.1109/ACCESS.2023.3240589)" by Jeongmin Lee, Taesoo Kwon, and Yoonsang Lee, published in IEEE Access in 2023.
+This project is based on the research paper titled "[Interactive Character Path-Following Using Long-Horizon Motion Matching With Revised Future Queries](https://cgrhyu.github.io/publications/2023-path-following.html)" by Jeongmin Lee, Taesoo Kwon, and Yoonsang Lee, published in IEEE Access in 2023.
 
 
 ## Prerequisites
