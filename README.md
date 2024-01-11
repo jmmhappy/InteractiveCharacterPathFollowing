@@ -22,7 +22,7 @@ sudo apt-get install libeigen3-dev
 
 ## Dataset
 
-This project uses the dataset of [Phase-Functioned Neural Networks for Character Control](https://theorangeduck.com/page/phase-functioned-neural-networks-character-control). This project was developed by Holden, D., Komura, T., & Saito, J. (2017), and can be freely used for academic or non-commercial purposes.
+This project uses the dataset of [Phase-Functioned Neural Networks for Character Control](https://theorangeduck.com/page/phase-functioned-neural-networks-character-control), which was developed by Holden, D., Komura, T., & Saito, J. (2017).
 
 You can directly download the PFNN dataset from [this link](http://theorangeduck.com/media/uploads/other_stuff/pfnn.zip). Browse the neccessary motion files at `pfnn\data\animations`.
 In our demo, we exclude jumping, t-poses, and walking on uneven terrain. That includes:
